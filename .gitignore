@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+
+# run-time / per-machine files
+crash_log.txt
+saved_lighting.json
+rhythm_log.txt
+*_answers.json
+*_answers.txt
