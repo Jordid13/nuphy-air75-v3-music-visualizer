@@ -85,6 +85,7 @@
     <button id="b-saveas" title="Save the current settings as a new profile">Save as…</button>
     <button id="b-delete" title="Delete this profile">Delete</button>
     <button id="b-stop" title="Stop the visualizer and restore your normal lighting">Stop</button>
+    <button id="b-quit" title="Close the visualizer program">Quit</button>
   </div>
 </header>
 <div class="offline" id="offline">The visualizer isn't running (stopped, or not started) — start <code>python spectrum.py</code> and reload this page.</div>
@@ -188,6 +189,12 @@ async function poll() {
     chip('#c-flash', s.flash_rate != null ? s.flash_rate.toFixed(1) : '–');
     chip('#c-gain', s.gain_db != null ? `${s.gain_db > 0 ? '+' : ''}${Math.round(s.gain_db)} dB` : '–');
     $('#c-flash').classList.toggle('flash', !!s.flashing);
+    running = !!s.running;
+    $('#b-stop').textContent = running ? 'Stop' : 'Start';
+    $('#b-stop').title = running ? 'Stop the visualizer and restore your normal lighting' : 'Start the visualizer';
+    $('#b-stop').classList.toggle('primary', !running);
+    if (s.error && s.error !== lastError) toast(s.error, true);
+    lastError = s.error;
   } catch (e) {
     $('#offline').style.display = 'block';
   }
@@ -247,11 +254,17 @@ $('#b-defaults').onclick = async () => {
   settings = (await api('/api/defaults', {})).settings; render();
   toast(`Defaults loaded — "${current}" is unchanged until you press Save`);
 };
+let running = false, lastError = null;
 $('#b-stop').onclick = async () => {
-  if (!confirm('Stop the visualizer and restore your normal lighting? (Unsaved settings are lost.)')) return;
+  await flush();
+  await api('/api/action', { name: running ? 'stop' : 'start' });
+  toast(running ? 'Stopping — lighting restored' : 'Starting');
+};
+$('#b-quit').onclick = async () => {
+  if (!confirm('Close the visualizer program? (Unsaved settings are lost.)')) return;
   await flush();
   await api('/api/action', { name: 'quit' });
-  toast('Stopping — lighting restored');
+  toast('Closing — lighting restored');
 };
 $('#b-kick').onclick =async () => { await api('/api/action', { name: 'reset_kick' }); toast('Re-learning kicks'); };
 
