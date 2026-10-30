@@ -4,9 +4,15 @@ Drives the lighting of a NuPhy Air75 V3 (USB `19F5:1028`, firmware 1.0.23.6) fro
 playing, over the keyboard's reverse-engineered config protocol.
 
 ```
-python spectrum.py            # close NuPhy IO first; Ctrl+C restores your lighting
+python spectrum.py            # close NuPhy IO first; opens the settings page; Ctrl+C restores your lighting
+python spectrum.py --no-ui    # no settings page (uses saved settings)
 python spectrum.py --stats    # plus link/audio timing every 2 s
 ```
+
+**Settings page** (`http://localhost:8765`, local only): every tunable — bar height/feel, kick flash
+(colour, length, when it may flash, sensitivity), side-strip mode/colour/brightness/speed per section —
+applies live. **Save** writes `settings.json`, loaded on the next start. Strip settings write the
+keyboard's flash memory, so they apply when a slider is released; strip speed is limited to 0–3.
 
 - **Keys:** 16-band spectrum across the columns (custom per-LED mode), red, with a white flash on kicks
   in loud parts. The kick threshold adapts to each song (~1 flash per beat).
@@ -14,13 +20,15 @@ python spectrum.py --stats    # plus link/audio timing every 2 s
   sections (calm / medium / hype, ranked against the song's last minute). Each change is one settings
   save, so they are rate-limited.
 
-Requires `pip install hidapi soundcard numpy`. See `python spectrum.py --help` for tuning options.
+Requires `pip install hidapi soundcard numpy`. `python spectrum.py --help` lists the startup options.
 
 ## Files
 
 | File | What |
 |---|---|
 | `spectrum.py` | the visualizer |
+| `ui_server.py`, `ui.html` | the live settings page (schema + limits in `ui_server.py`) |
+| `record_audio.py` | record what the visualizer hears to a WAV, for offline tuning |
 | `nuphy.py` | protocol driver (session key, read/write, per-LED colours) with safety guards |
 | `layout.py` | key LED index → row / x position (verified on the keyboard) |
 | `dump_frame.py` | read the live per-LED colour frame (read-only) |

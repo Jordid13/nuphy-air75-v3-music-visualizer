@@ -64,12 +64,15 @@ class Keyboard:
         self.dev = hid.device()
         self.dev.open_path(path)
         self.history = []
+        import time as _t
         for attempt in range(5):
-            self.key = self._set_key()
-            if self._key_ok():
-                break
-            import time as _t
-            _t.sleep(0.05)        # keyboard was busy (e.g. saving settings) and missed the key; retry
+            try:
+                self.key = self._set_key()
+                if self._key_ok():
+                    break
+            except TimeoutError:
+                pass              # keyboard busy (e.g. saving settings) and didn't answer; retry
+            _t.sleep(0.1)
         else:
             raise RuntimeError('keyboard did not accept a session key after 5 tries')
 

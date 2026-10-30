@@ -1,11 +1,12 @@
-"""Music spectrum on the NuPhy Air75 V3.
+"""Music visualizer for the NuPhy Air75 V3, with a live settings page.
 
-Keys: 16 frequency bands across the keyboard's columns, bars rising from the bottom row (custom mode).
-Side strips: solid colour, brightness follows the bass.
+Keys: 16 frequency bands across the keyboard's columns (custom per-LED mode), white flash on kicks.
+Side strips: built-in flowing effect, brightness/speed follow the song's sections.
 Captures whatever the PC is playing (WASAPI loopback). Ctrl+C restores your lighting.
 Close NuPhy IO first (it and this script each set their own session key).
 
-  python spectrum.py [--color 255,0,0] [--device "USB Audio"] [--no-side] [--gain 1.0]
+  python spectrum.py                 # opens the settings page at http://localhost:8765
+  python spectrum.py --no-ui         # no settings page (uses saved settings)
 """
 import argparse
 import ctypes
@@ -18,6 +19,7 @@ import warnings
 import numpy as np
 import soundcard as sc
 
+import ui_server
 from nuphy import Keyboard, BANK_LIGHT, SIDE, MAIN_CUSTOM
 from layout import KEYS, N_ROWS, WIDTH
 
@@ -25,43 +27,30 @@ RATE, HOP, FFT = 48000, 1024, 4096      # ~21 ms per update, 11.7 Hz bins
 N_BANDS = 16
 F_LO, F_HI = 40, 16000
 BASS = (40, 150)
-STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'saved_lighting.json')
-CRASH_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'crash_log.txt')
-FILL_STEPS = 4                          # partial top key brightness levels (fewer = fewer packets)
+HERE = os.path.dirname(os.path.abspath(__file__))
+STATE_FILE = os.path.join(HERE, 'saved_lighting.json')
+CRASH_LOG = os.path.join(HERE, 'crash_log.txt')
+AGC_TARGET_DB = -20.0       # level the input is normalised to (volume independence)
+AGC_SECONDS = 30.0          # slow enough that a chorus still stands out against the verse
+FILL_STEPS = 4              # partial top key brightness levels (fewer = fewer packets)
+PUNCH_STEPS = 4             # flash fade levels (fewer = fewer packets)
+SIDE_MIN_GAP = 0.5          # s between side writes caused by settings changes (each is a flash save)
+RISE_GAP = 1.0              # min s between section switches going up (each is a flash save)
+FALL_GAP = 4.0              # ... going down
+SILENCE_HOLD = 3.0
+CALM_DB, HYPE_DB = 10.0, 4.0   # first 5 s only: dB below the loudest stretch for calm / hype
+SECTION_RANK = {'silent': 0, 'calm': 1, 'medium': 2, 'hype': 3}
 
 
 def parse_args():
-    p = argparse.ArgumentParser()
-    p.add_argument('--color', default='255,0,0', help='R,G,B for bars and side strips')
+    p = argparse.ArgumentParser(description='Most settings live on the settings page; these are startup options.')
     p.add_argument('--device', help='part of the output device name (default: system default)')
-    p.add_argument('--side', choices=('auto', 'static', 'off', 'keep', 'caps', 'flash'), default='auto',
-                   help='auto: flowing effect, speed/brightness/colour follow tempo, loudness and tone (default; a settings save '
-                        'at most every 10 s) | static: solid colour, set once | off: dark | keep: leave as is | '
-                        'caps: LEFT strip flashes on beats by toggling Caps Lock (no flash-memory writes; '
-                        'don\'t type while it runs) | '
-                        'flash: beat flashes — each one saves to the keyboard\'s flash memory (wear!) and stalls the keys')
-    p.add_argument('--no-side', action='store_true', help='same as --side keep')
-    p.add_argument('--gain', type=float, default=1.0, help='>1 makes bars taller')
-    p.add_argument('--range', type=float, default=24.0,
-                   help='dB from empty to full bar; smaller = jumpier bars, larger = calmer')
-    p.add_argument('--headroom', type=float, default=8.0,
-                   help='dB above the recent average needed for a full bar; lower = fuller keyboard')
-    p.add_argument('--memory', type=float, default=8.0,
-                   help='seconds of song the average loudness covers; longer = loud sections stand out more')
-    p.add_argument('--adapt', type=float, default=1.0,
-                   help='side flashes: dB/s the loudest-level reference falls after loud parts')
-    p.add_argument('--decay', type=float, default=0.72,
-                   help='bar fall-off per 21 ms (0-1); higher = slower, smoother fall')
-    p.add_argument('--flash-db', type=float, default=3.0,
-                   help='side strips flash only when the song is within this many dB of its loudest; lower = rarer')
-    p.add_argument('--flash-ms', type=float, default=180, help='how long each side flash stays on')
-    p.add_argument('--punch-ms', type=float, default=150,
-                   help='white flash on the keys on beats in loud parts: fade time (0 = off)')
-    p.add_argument('--hit-db', type=float, default=3.0,
-                   help='starting bass jump (dB over its recent average) that counts as a kick; '
-                        'it then adapts to the song unless --fixed-kicks')
-    p.add_argument('--fixed-kicks', action='store_true',
-                   help='keep the kick threshold at --hit-db instead of adapting it to each song')
+    p.add_argument('--side', choices=('caps', 'flash'),
+                   help='special side-strip modes not on the settings page: caps = LEFT strip flashes on kicks '
+                        'by toggling Caps Lock (don\'t type); flash = brightness flashes (wears flash memory!)')
+    p.add_argument('--no-ui', action='store_true', help='don\'t open the settings page')
+    p.add_argument('--port', type=int, default=8765)
+    p.add_argument('--no-browser', action='store_true', help='serve the settings page but don\'t open it')
     p.add_argument('--seconds', type=float, help='stop after this long')
     p.add_argument('--stats', action='store_true', help='print link/audio timing every 2 s')
     p.add_argument('--debug-restore', action='store_true', help=argparse.SUPPRESS)
@@ -69,8 +58,8 @@ def parse_args():
 
 
 def band_plan():
-    """Per band: (fft_size, bin mask, window). Long windows only where needed for frequency
-    resolution (bass); mids and highs use short windows so they react sooner."""
+    """Per band: (fft_size, bin mask). Long windows only where needed for frequency resolution (bass);
+    mids and highs use short windows so they react sooner."""
     edges = np.geomspace(F_LO, F_HI, N_BANDS + 1)
     plan = []
     for lo, hi in zip(edges[:-1], edges[1:]):
@@ -84,14 +73,11 @@ def band_plan():
     return plan, windows
 
 
-PUNCH_STEPS = 4                         # white-flash fade levels (fewer = fewer packets)
-
-
-def key_frame(levels, rgb, punch=0.0):
-    """levels: N_BANDS values in rows (0..N_ROWS); punch 0..1 blends lit keys towards white.
+def key_frame(levels, rgb, punch=0.0, punch_rgb=(255, 255, 255)):
+    """levels: N_BANDS values in rows (0..N_ROWS); punch 0..1 blends lit keys towards punch_rgb.
     Returns {index: (r,g,b)}."""
     punch = np.ceil(punch * PUNCH_STEPS) / PUNCH_STEPS
-    col = tuple(c + (255 - c) * punch for c in rgb)
+    col = tuple(c + (p - c) * punch for c, p in zip(rgb, punch_rgb))
     out = {}
     for idx, row, x in KEYS:
         band = min(int(x / WIDTH * N_BANDS), N_BANDS - 1)
@@ -102,32 +88,19 @@ def key_frame(levels, rgb, punch=0.0):
     return out
 
 
-# --side auto: the side strips run the built-in FLOWING effect (0), with its parameters following the song.
-# Side bytes: effect, brightness, speed (0 fastest .. 4 slowest), isRGB (rainbow), 0, R, G, B
-SECTION_BRIGHT = {'silent': 35, 'calm': 35, 'medium': 65, 'hype': 100}   # always on
-# tone colours, bass-heavy -> bright: deep red, red-magenta, magenta, purple, blue-violet, blue
-TONE_COLORS = [(255, 0, 0), (255, 0, 60), (255, 0, 140), (170, 0, 255), (90, 0, 255), (0, 40, 255)]
-
-
-def tempo_to_speed(bpm):
-    """Faster songs flow faster. Speed byte 0 is the fastest (~1.6 s cycle), 3 the slowest used (~3 s);
-    4 is never used (it locks the speed setting)."""
-    if bpm is None:
-        return 2
-    return 1 if bpm >= 125 else 2 if bpm >= 100 else 3
-
-
-def flowing_look(section, speed, tone):
-    # the section sets the speed across the whole visible range (calm ~4 s cycle, hype ~1.6 s);
-    # tempo only nudges calm one step faster for fast songs
-    if section == 'hype':
-        speed = 0
-    elif section == 'medium':
-        speed = 1
-    else:
-        speed = 2 if speed <= 1 else 3
-    # always red (user's choice); tone is tracked but not used for colour
-    return bytes([0, SECTION_BRIGHT[section], speed, 0, 0, 255, 0, 0])
+def side_look(cfg, section):
+    """Side bytes for the current settings: effect, brightness, speed, isRGB, 0, R, G, B.
+    Effects: 0 flowing, 2 static. None = leave the strips alone. Speeds are 0-3 (4 locks the keyboard)."""
+    mode = cfg['side_mode']
+    r, g, b = cfg['side_color']
+    if mode == 'keep':
+        return None
+    if mode == 'off':
+        return bytes([2, 0, 2, 0, 0, r, g, b])
+    if mode == 'static':
+        return bytes([2, cfg['bright_hype'], 2, 0, 0, r, g, b])
+    sec = 'calm' if section == 'silent' else section          # always on
+    return bytes([0, cfg[f'bright_{sec}'], cfg[f'speed_{sec}'], 0, 0, r, g, b])
 
 
 class TempoTracker:
@@ -167,71 +140,51 @@ class TempoTracker:
         return self.bpm
 
 
-def tone_index(mag_lo, freqs):
-    """Spectral centroid (log-scaled 300 Hz - 4 kHz) -> index into TONE_COLORS."""
-    total = mag_lo.sum()
-    if total <= 0:
-        return 0
-    c = float((mag_lo * freqs).sum() / total)
-    x = (np.log(max(c, 300)) - np.log(300)) / (np.log(4000) - np.log(300))
-    return int(np.clip(round(x * (len(TONE_COLORS) - 1)), 0, len(TONE_COLORS) - 1))
-SECTION_HOLD = 1.5          # s a new look must last before the strips switch (getting quieter)
-SECTION_GAP = 4.0           # min s between switches (each is one flash-memory save) (getting quieter)
-RISE_HOLD = 0.15            # getting louder reacts fast...
-RISE_GAP = 1.0              # ...but still at most one save per second
-SECTION_RANK = {'silent': 0, 'calm': 1, 'medium': 2, 'hype': 3}
-SILENCE_HOLD = 3.0
-CALM_DB, HYPE_DB = 10.0, 4.0   # dB below the song's loudest stretch: < CALM_DB below = calm-ish, within HYPE_DB = hype
-
-
 class SectionTracker:
-    """Classifies the song's current stretch as silent / calm / medium / hype from loudness,
-    relative to the loudest stretch heard recently (so it adapts to each song and volume)."""
+    """Classifies the song's current stretch as silent / calm / medium / hype from loudness, ranked
+    against the song's own last minute (so it adapts to each song and to compressed masters)."""
 
     def __init__(self):
         self.avg = None          # ~1 s average loudness (dB)
-        self.peak = None         # loudest stretch, falls 0.05 dB/s (~3 dB a minute)
+        self.fast = None         # ~0.15 s average, only used for getting louder
+        self.peak = None         # loudest stretch, falls 0.05 dB/s
+        self.hist, self.hist_t = [], 0.0
         self.silent_for = 0.0
         self.candidate, self.since = 'silent', 0.0
-        self.current = None
+
+    def _classify(self, level):
+        if len(self.hist) < 50:                       # first 5 s: fall back to distance from the peak
+            below = self.peak - level
+            return 'hype' if below <= HYPE_DB else 'calm' if below >= CALM_DB else 'medium'
+        lo, hi = np.percentile(self.hist, [10, 90])   # the song's quiet and loud levels
+        if hi - lo < 1.5:                             # barely any dynamics: stay in the middle
+            return 'medium'
+        pos = (level - lo) / (hi - lo)
+        return 'hype' if pos >= 0.66 else 'calm' if pos <= 0.33 else 'medium'
 
     def update(self, rms_db, silent, dt, now):
         if silent:
             self.silent_for += dt
         else:
             self.silent_for = 0.0
-            a = min(1.0, dt / 1.0)
-            self.avg = rms_db if self.avg is None else self.avg + a * (rms_db - self.avg)
-            af = min(1.0, dt / 0.15)                       # fast reading, only used for getting louder
-            self.fast = rms_db if getattr(self, 'fast', None) is None else self.fast + af * (rms_db - self.fast)
+            self.avg = rms_db if self.avg is None else self.avg + min(1.0, dt / 1.0) * (rms_db - self.avg)
+            self.fast = rms_db if self.fast is None else self.fast + min(1.0, dt / 0.15) * (rms_db - self.fast)
             self.peak = self.avg if self.peak is None else max(self.avg, self.peak - 0.05 * dt)
+            self.hist_t += dt
+            if self.hist_t >= 0.1:
+                self.hist_t = 0.0
+                self.hist = (self.hist + [self.avg])[-600:]
         if self.silent_for >= SILENCE_HOLD or self.avg is None:
             sec = 'silent'
         elif self.silent_for > 0:
-            sec = self.candidate                  # brief gap: keep what we had
+            sec = self.candidate                      # brief gap: keep what we had
         else:
-            # rank against the song's own last minute: real songs only vary a few dB between verse and chorus
-            self.hist_t = getattr(self, 'hist_t', 0.0) + dt
-            if self.hist_t >= 0.1:
-                self.hist_t = 0.0
-                self.hist = (getattr(self, 'hist', []) + [self.avg])[-600:]
-            hist = getattr(self, 'hist', [])
-
-            def classify(level):
-                if len(hist) < 50:                       # first 5 s: fall back to distance from the peak
-                    below = self.peak - level
-                    return 'hype' if below <= HYPE_DB else 'calm' if below >= CALM_DB else 'medium'
-                lo, hi = np.percentile(hist, [10, 90])   # the song's quiet and loud levels
-                if hi - lo < 1.5:                        # barely any dynamics: stay in the middle
-                    return 'medium'
-                pos = (level - lo) / (hi - lo)
-                return 'hype' if pos >= 0.66 else 'calm' if pos <= 0.33 else 'medium'
-            slow, fast = classify(self.avg), classify(self.fast)
+            slow, fast = self._classify(self.avg), self._classify(self.fast)
             # louder: trust the fast reading (a drop goes straight up); quieter: the slower one (no flicker)
             sec = fast if SECTION_RANK[fast] > SECTION_RANK[slow] else slow
         if sec != self.candidate:
             self.candidate, self.since = sec, now
-        return self.candidate, now - self.since
+        return self.candidate
 
 
 VK_CAPITAL = 0x14
@@ -264,31 +217,32 @@ def saved_lighting(kb):
 
 def main():
     args = parse_args()
-    if args.no_side:
-        args.side = 'keep'
-    flashing = args.side == 'flash'
-    capsing = args.side == 'caps'
+    cfg = ui_server.load()
+    status = {}
+    lock = threading.Lock()
+    stop = threading.Event()
+    flashing, capsing = args.side == 'flash', args.side == 'caps'
     if capsing:
         print('Caps mode: the left strip flashes by toggling Caps Lock — don\'t type while this runs.')
+        cfg['side_mode'] = 'off'
     if flashing:
         print('WARNING: --side flash saves to the keyboard\'s flash memory on every flash (~2 writes per beat).\n'
               '         Fine for a quick look; avoid long sessions.')
-    rgb = tuple(int(c) for c in args.color.split(','))
+        cfg['side_mode'] = 'off'
+
     kb = Keyboard()
     saved = saved_lighting(kb)
     caps_at_start = caps_is_on()
     if capsing and caps_at_start:
         tap_caps()                                       # start from Caps off so flashes are on/off
 
-    def setup(kb, side_look=None):
+    def setup(kb, look):
         kb.write(BANK_LIGHT, 0, [MAIN_CUSTOM, 100])
         kb.set_leds([(i, 0, 0, 0) for i, _, _ in KEYS])
-        if args.side == 'auto':
-            kb.write(BANK_LIGHT, SIDE, side_look or flowing_look('silent', 2, 0))
-        elif args.side != 'keep':
-            # static, rainbow flag off, our colour; one write now, none while running (unless flashing)
-            bright = {'static': 100, 'off': 0, 'flash': 0, 'caps': 0}[args.side]
-            kb.write(BANK_LIGHT, SIDE, [2, bright, 2, 0, 0, *rgb])
+        if look is not None:
+            kb.write(BANK_LIGHT, SIDE, look)
+
+    ctx = {'kb': kb}
 
     def reconnect(reason):
         """The keyboard dropped off USB (it reboots on some inputs). Log what it last got, wait, reconnect."""
@@ -309,104 +263,98 @@ def main():
                 continue
         return None
 
-    setup(kb)
-    ctx = {'kb': kb}
-
-    target = {'keys': key_frame(np.zeros(N_BANDS), rgb), 'side': 0}
-    # (side_sent starts at -1 so the first flash state is always sent; only used with --side flash)
-    lock = threading.Lock()
-    stop = threading.Event()
-
-    st = {'frames': 0, 'leds': 0, 'key_s': 0.0, 'side': 0, 'side_s': 0.0, 'hops': 0}
+    with lock:
+        first_look = side_look(cfg, 'silent')
+    setup(kb, first_look)
+    target = {'keys': key_frame(np.zeros(N_BANDS), tuple(cfg['color'])), 'side': 0, 'look': first_look}
+    st = {'frames': 0, 'leds': 0, 'key_s': 0.0, 'side': 0, 'side_s': 0.0, 'hops': 0, 'samples': 0}
 
     def writer():
         sent = {i: (0, 0, 0) for i, _, _ in KEYS}
-        side_sent, side_t = -1, 0.0
-        look_sent = flowing_look('silent', 2, 0) if args.side == 'auto' else None
+        w = {'look': first_look, 'side': -1, 'side_t': 0.0}
         while not stop.is_set():
             try:
-                look_sent, side_sent, side_t = write_once(sent, look_sent, side_sent, side_t)
+                write_once(sent, w)
             except OSError as e:
                 kb2 = reconnect(str(e))
                 if kb2 is None:
                     return
                 with lock:
-                    cur_look = target.get('look')
+                    cur_look = target['look']
                 try:
                     setup(kb2, cur_look)
                 except OSError:
                     continue
                 sent.update({i: (0, 0, 0) for i in sent})
-                look_sent = cur_look if args.side == 'auto' else None
+                w['look'] = cur_look
 
-    def write_once(sent, look_sent, side_sent, side_t):
+    def write_once(sent, w):
         kb = ctx['kb']
-        if True:
-            with lock:
-                side = target['side']
-            now = time.perf_counter()
-            # side flashes first, so they never wait behind a key frame (min gap so writes can't pile up)
-            with lock:
-                look = target.get('look')
-            if look is not None and look != look_sent:
-                kb.write(BANK_LIGHT, SIDE, look)         # --side auto: one save per section change
-                st['side'] += 1
-                look_sent = look
-            if capsing and (side > 0) != caps_is_on() and now - side_t > 0.03:
-                tap_caps()                               # Windows sends the Caps light state to the keyboard
-                st['side'] += 1
-                side_sent, side_t = side, time.perf_counter()
-            elif flashing and side != side_sent and now - side_t > 0.03:
-                kb.write(BANK_LIGHT, SIDE + 1, [side])
-                st['side'] += 1
-                st['side_s'] += time.perf_counter() - now
-                side_sent, side_t = side, time.perf_counter()
-            with lock:
-                keys = dict(target['keys'])
-            changed = [(i, *c) for i, c in keys.items() if sent[i] != c]
-            if changed:
-                t = time.perf_counter()
-                kb.set_leds(changed)
-                st['key_s'] += time.perf_counter() - t
-                st['frames'] += 1
-                st['leds'] += len(changed)
-                for i, *c in changed:
-                    sent[i] = tuple(c)
-            if not changed:
-                time.sleep(0.004)
-        return look_sent, side_sent, side_t
+        with lock:
+            side, look, keys = target['side'], target['look'], dict(target['keys'])
+        now = time.perf_counter()
+        if look is not None and look != w['look']:
+            kb.write(BANK_LIGHT, SIDE, look)             # one flash save per change (rate-limited upstream)
+            st['side'] += 1
+            w['look'] = look
+        if capsing and (side > 0) != caps_is_on() and now - w['side_t'] > 0.03:
+            tap_caps()                                   # Windows sends the Caps light state to the keyboard
+            w['side'], w['side_t'] = side, time.perf_counter()
+        elif flashing and side != w['side'] and now - w['side_t'] > 0.03:
+            kb.write(BANK_LIGHT, SIDE + 1, [side])
+            w['side'], w['side_t'] = side, time.perf_counter()
+        changed = [(i, *c) for i, c in keys.items() if sent[i] != c]
+        if changed:
+            t = time.perf_counter()
+            kb.set_leds(changed)
+            st['key_s'] += time.perf_counter() - t
+            st['frames'] += 1
+            st['leds'] += len(changed)
+            for i, *c in changed:
+                sent[i] = tuple(c)
+        else:
+            time.sleep(0.004)
 
     wt = threading.Thread(target=writer, daemon=True)
     wt.start()
 
+    kick = {'thr': cfg['kick_db'], 't': time.perf_counter(), 'hits': 0, 'loud_s': 0.0,
+            'adaptive': cfg['adaptive_kicks'], 'flashes': []}
+
+    quit_req = threading.Event()
+
+    def on_action(name):
+        if name == 'reset_kick':
+            with lock:
+                kick.update(thr=cfg['kick_db'], hits=0, loud_s=0.0)
+        elif name == 'quit':
+            quit_req.set()                               # main loop ends; lighting is restored
+
+    if not args.no_ui:
+        url = ui_server.start(cfg, status, lock, args.port, open_browser=not args.no_browser, on_action=on_action)
+        print(f'settings page: {url}')
+
     plan, windows = band_plan()
     buf = np.zeros(FFT)
+    agc = {'db': None, 'gain': 1.0, 'digital_silence': True}
     levels = np.zeros(N_BANDS)
-    avg_db = None                  # average band loudness over the last --memory seconds (dB)
-    short_db = None                # per-band level over the last ~0.3 s, for transient emphasis
-    TRANSIENT = 1.0                # how much changes (hits, new notes) are boosted over sustained level
+    avg_db = None                  # average band loudness over the last `memory` seconds (dB)
+    short_db = None                # per-band level over the last ~0.3 s, for punchiness
     SHORT_S = 0.3
     tilt = np.zeros(N_BANDS)       # slow per-band average, removes the bass-heavy spectral tilt
     hop_s = HOP / RATE             # reference step: per-hop rates below are scaled to real elapsed time
-    rms_ref = None                 # loudness reference for side flashes (dB), same slow fall as the keys
-    bass_avg = None                # recent bass level (dB), for detecting hits
-    sections = SectionTracker() if args.side == 'auto' else None
+    rms_ref = None                 # loudest recent level (dB), for the "loud parts" flash mode
+    bass_hist = []                 # bass level (dB) of the last few 10 ms steps, for kick attacks
+    sections = SectionTracker()
     tempo = TempoTracker()
     f1k = np.fft.rfftfreq(HOP, 1 / RATE)
     tempo_band = (f1k >= 40) & (f1k <= 400)          # kick + snare body
-    t_status = 0.0
-    tone_f = 0.0                                  # smoothed tone index
-    freqs2k = np.fft.rfftfreq(2048, 1 / RATE)
-    tone_band = (freqs2k >= 100) & (freqs2k <= 8000)
-    applied_look = flowing_look('silent', 2, 0)
-    want_look, want_since, last_switch = applied_look, 0.0, -SECTION_GAP
-    applied_section = want_section = 'silent'
-    last_flash = -1.0
-    kick = {'thr': args.hit_db, 't': time.perf_counter(), 'hits': 0, 'loud_s': 0.0}
-    FLASH_HOLD = args.flash_ms / 1000
-    REFRACTORY = max(0.12, FLASH_HOLD)   # a hit during a flash doesn't restart it
     short_win = np.hanning(HOP)
-    short_bass = (np.fft.rfftfreq(HOP, 1 / RATE) >= BASS[0]) & (np.fft.rfftfreq(HOP, 1 / RATE) <= BASS[1])
+    short_bass = (f1k >= BASS[0]) & (f1k <= BASS[1])
+    section = applied_section = want_section = 'silent'
+    want_look, want_since, last_switch = first_look, 0.0, -FALL_GAP
+    last_flash = -1.0
+    t_status = 0.0
 
     speaker = sc.get_speaker(args.device) if args.device else sc.default_speaker()
     mic = sc.get_microphone(id=str(speaker.name), include_loopback=True)
@@ -416,110 +364,149 @@ def main():
         with mic.recorder(samplerate=RATE, channels=2, blocksize=256) as rec:
             t_end = time.perf_counter() + args.seconds if args.seconds else float('inf')
             t_stats = t_prev = time.perf_counter()
-            while time.perf_counter() < t_end:
+            while time.perf_counter() < t_end and not quit_req.is_set():
                 # take whatever audio has arrived (never a backlog), analyse the newest window
                 data = rec.record(numframes=None)
                 if len(data) == 0:
                     time.sleep(0.002)
                     continue
+                with lock:
+                    c = dict(cfg)                         # this pass's settings (the page can change them)
                 mono = data.mean(axis=1)[-FFT:]
+                # automatic gain: hold the song's ~30 s level constant so system/player volume doesn't matter
+                raw_rms = float(np.sqrt(np.mean(mono ** 2)))
+                agc['digital_silence'] = raw_rms < 1e-7
+                if not agc['digital_silence']:
+                    raw_db = 20 * np.log10(raw_rms)
+                    if agc['db'] is None:
+                        agc['db'] = raw_db
+                    elif raw_db > agc['db'] - 40:                 # ignore near-silence (fade-outs, gaps)
+                        # >15 dB away: the volume was changed, catch up in ~3 s; otherwise adapt slowly
+                        secs = 3.0 if abs(raw_db - agc['db']) > 15 else AGC_SECONDS
+                        agc['db'] += min(1.0, len(mono) / RATE / secs) * (raw_db - agc['db'])
+                    agc['gain'] = float(np.clip(10 ** ((AGC_TARGET_DB - agc['db']) / 20), 0.5, 1000.0))
+                mono = mono * agc['gain']
                 buf = np.roll(buf, -len(mono))
                 buf[-len(mono):] = mono
                 t_now = time.perf_counter()
                 k = (t_now - t_prev) / hop_s          # elapsed time in hops
+                dt = k * hop_s
                 t_prev = t_now
                 st['hops'] += 1
-                st['samples'] = st.get('samples', 0) + len(mono)
+                st['samples'] += len(mono)
                 if args.stats and t_now - t_stats >= 2.0:
-                    dt = t_now - t_stats
+                    el = t_now - t_stats
                     f = max(st['frames'], 1)
-                    print(f"key frames/s {st['frames'] / dt:5.1f} | leds/frame {st['leds'] / f:5.1f} | "
-                          f"ms/frame {1000 * st['key_s'] / f:5.1f} | side writes/s {st['side'] / dt:4.1f} "
-                          f"({1000 * st['side_s'] / max(st['side'], 1):4.1f} ms) | "
-                          f"audio reads/s {st['hops'] / dt:5.1f}, "
+                    print(f"key frames/s {st['frames'] / el:5.1f} | leds/frame {st['leds'] / f:5.1f} | "
+                          f"ms/frame {1000 * st['key_s'] / f:5.1f} | side writes/s {st['side'] / el:4.1f} | "
+                          f"audio reads/s {st['hops'] / el:5.1f}, "
                           f"{1000 * st['samples'] / max(st['hops'], 1) / RATE:4.1f} ms each", flush=True)
                     for key in st:
                         st[key] = 0
                     t_stats = t_now
-                silent = np.sqrt(np.mean(buf[-HOP:] ** 2)) < 1e-4
+
+                # --- spectrum bars
+                # silent = no signal at all, or 40 dB below the song's normal level (at any volume)
+                silent = agc['digital_silence'] or np.sqrt(np.mean(buf[-HOP:] ** 2)) < 10 ** ((AGC_TARGET_DB - 40) / 20)
                 mags = {n: np.abs(np.fft.rfft(buf[-n:] * w)) * (FFT / n) for n, w in windows.items()}
                 energy = np.array([mags[n][m].mean() for n, m in plan])
                 db = 20 * np.log10(energy + 1e-9)
                 if silent:
                     new = np.zeros(N_BANDS)
                 else:
-                    tilt = db if not tilt.any() else tilt + min(1.0, k * hop_s / 20.0) * (db - tilt)   # ~20 s
+                    tilt = db if not tilt.any() else tilt + min(1.0, dt / 20.0) * (db - tilt)   # ~20 s
                     comp = db - (tilt - tilt.mean())                   # flatten bass vs treble
                     now_db = comp.mean()
-                    a = min(1.0, k * hop_s / args.memory)
-                    avg_db = now_db if avg_db is None else avg_db + a * (now_db - avg_db)
-                    top = avg_db + args.headroom                       # full bar
-                    sa = min(1.0, k * hop_s / SHORT_S)
-                    short_db = comp.copy() if short_db is None else short_db + sa * (comp - short_db)
+                    avg_db = now_db if avg_db is None else avg_db + min(1.0, dt / c['memory']) * (now_db - avg_db)
+                    top = avg_db + c['headroom']                       # full bar
+                    short_db = comp.copy() if short_db is None else short_db + min(1.0, dt / SHORT_S) * (comp - short_db)
                     # sustained sound settles at its normal height; rises above the recent level jump higher
-                    lively = comp + TRANSIENT * np.maximum(comp - short_db, 0)
-                    norm = (lively - (top - args.range)) / args.range * args.gain
+                    lively = comp + c['transient'] * np.maximum(comp - short_db, 0)
+                    norm = (lively - (top - c['range'])) / c['range'] * c['gain']
                     new = np.clip(norm, 0, 1) * N_ROWS
-                levels = np.where(new > levels, new, levels * args.decay ** k)
+                levels = np.where(new > levels, new, levels * c['decay'] ** k)
 
+                # --- sections and tempo
                 now = time.perf_counter()
+                loud_db = 20 * np.log10(np.sqrt(np.mean(mono ** 2)) + 1e-9)
+                section = sections.update(loud_db, silent, dt, now)
+                newest = buf[-HOP:]
+                bpm = tempo.update(np.log(np.abs(np.fft.rfft(newest * short_win))[tempo_band] + 1e-6), dt)
+
+                # --- kicks: a sharp rise in bass over the last ~30 ms (its attack), checked every ~10 ms
+                if kick['adaptive'] != c['adaptive_kicks']:          # toggled on the page: restart from slider
+                    kick.update(adaptive=c['adaptive_kicks'], thr=c['kick_db'], hits=0, loud_s=0.0)
+                thr = kick['thr'] if c['adaptive_kicks'] else c['kick_db']
+                gap = c['flash_gap_ms'] / 1000
                 if not silent:
-                    # audio can arrive in ~40 ms bursts: check every 512-sample step of the new audio, oldest first
                     steps = max(1, len(mono) // 512)
-                    a = 1 - 0.95 ** (512 / HOP)                      # same ~0.4 s bass average as before
                     for s in range(steps - 1, -1, -1):
                         end = len(buf) - s * 512
-                        win = buf[end - HOP:end]                     # 21 ms window: no smearing
+                        win = buf[end - HOP:end]
                         rms_db = 20 * np.log10(np.sqrt(np.mean(win ** 2)) + 1e-9)
-                        rms_ref = rms_db if rms_ref is None else max(rms_db, rms_ref - args.adapt * 512 / RATE)
+                        rms_ref = rms_db if rms_ref is None else max(rms_db, rms_ref - 512 / RATE)   # falls 1 dB/s
                         bass_db = 20 * np.log10(np.abs(np.fft.rfft(win * short_win))[short_bass].mean() + 1e-9)
-                        bass_avg = bass_db if bass_avg is None else bass_avg + a * (bass_db - bass_avg)
-                        is_loud = rms_db >= rms_ref - args.flash_db
-                        if is_loud:
+                        rise = bass_db - min(bass_hist) if bass_hist else 0.0
+                        bass_hist.append(bass_db)
+                        del bass_hist[:-3]
+                        when = c['flash_when']
+                        allowed = (section == 'hype' if when == 'hype'
+                                   else rms_db >= rms_ref - c['flash_db'] if when == 'loud' else True)
+                        if allowed:
                             kick['loud_s'] += 512 / RATE
-                        if is_loud and bass_db > bass_avg + kick['thr'] and now - last_flash > REFRACTORY:
+                        if allowed and rise > thr and now - last_flash > gap:
                             last_flash = now
                             kick['hits'] += 1
-                # adapt the kick threshold to the song: aim for about one flash per beat in the loud parts
-                if not args.fixed_kicks and now - kick['t'] >= 4.0:
+                            kick['flashes'].append(now)
+                # adapt the kick threshold to the song: aim for about one flash per beat while flashing is allowed
+                if c['adaptive_kicks'] and now - kick['t'] >= 4.0:
                     if kick['loud_s'] >= 1.5:
                         rate = kick['hits'] / kick['loud_s']
-                        beats = (tempo.bpm or 120) / 60
-                        if rate > 1.3 * beats:
-                            kick['thr'] = min(9.0, kick['thr'] * 1.2)      # catching more than kicks
-                        elif rate < 0.6 * beats:
-                            kick['thr'] = max(0.8, kick['thr'] / 1.2)      # missing soft kicks
+                        beats = (bpm or 120) / 60
+                        if rate > 1.5 * beats:
+                            kick['thr'] = min(15.0, kick['thr'] * 1.2)     # catching more than kicks
+                        elif rate < 0.7 * beats:
+                            kick['thr'] = max(1.0, kick['thr'] / 1.2)      # missing soft kicks
                     kick.update(t=now, hits=0, loud_s=0.0)
-                if sections:
-                    dt = k * hop_s
-                    loud_db = 20 * np.log10(np.sqrt(np.mean(mono ** 2)) + 1e-9)
-                    section, _ = sections.update(loud_db, silent, dt, now)
-                    newest = buf[-HOP:]
-                    low_spec = np.abs(np.fft.rfft(newest * short_win))[tempo_band]
-                    bpm = tempo.update(np.log(low_spec + 1e-6), dt)
-                    if not silent:
-                        tone_f += min(1.0, dt / 3.0) * (tone_index(mags[2048][tone_band], freqs2k[tone_band]) - tone_f)
-                    look = flowing_look(section, tempo_to_speed(bpm), int(round(tone_f)))
-                    if look != want_look:
-                        want_look, want_since, want_section = look, now, section
-                    rising = SECTION_RANK[want_section] > SECTION_RANK[applied_section]
-                    hold, gap = (RISE_HOLD, RISE_GAP) if rising else (SECTION_HOLD, SECTION_GAP)
-                    if (want_look != applied_look and now - want_since >= hold
-                            and now - last_switch >= gap):
-                        applied_look, applied_section, last_switch = want_look, want_section, now
-                        with lock:
-                            target['look'] = applied_look
-                    if not args.stats and now - t_status >= 1.0:
-                        t_status = now
-                        bpm_s = f'{bpm:5.1f}' if bpm else '  ?  '
-                        print(f'\rsong: {section:6s} bpm {bpm_s} | strips: {applied_section:6s} '
-                              f'speed {applied_look[2]} brightness {applied_look[1]:3d} | '
-                              f'kick {kick["thr"]:3.1f} dB   ', end='', flush=True)
+
+                # --- side strips: switch looks on section changes (and settings changes), rate-limited
+                look = side_look(c, section)
+                if look != want_look:
+                    want_look, want_since, want_section = look, now, section
+                rising = SECTION_RANK[want_section] > SECTION_RANK[applied_section]
+                hold = c['rise_hold'] if rising else c['fall_hold']
+                if want_section == applied_section:                     # only a settings change
+                    hold, min_gap = 0.0, SIDE_MIN_GAP
+                else:
+                    min_gap = RISE_GAP if rising else FALL_GAP
+                if want_look != target['look'] and now - want_since >= hold and now - last_switch >= min_gap:
+                    applied_section, last_switch = want_section, now
+                    with lock:
+                        target['look'] = want_look
+
+                # --- keys
                 since_hit = now - last_flash
-                punch = max(0.0, 1 - since_hit / (args.punch_ms / 1000)) if args.punch_ms > 0 else 0.0
+                punch = max(0.0, 1 - since_hit / (c['punch_ms'] / 1000)) if c['punch_on'] else 0.0
+                frame = key_frame(levels, tuple(c['color']), punch, tuple(c['punch_color']))
                 with lock:
-                    target['keys'] = key_frame(levels, rgb, punch)
-                    target['side'] = 100 if since_hit < FLASH_HOLD else 0
+                    target['keys'] = frame
+                    target['side'] = 100 if since_hit < 0.18 else 0
+
+                # --- status for the page and the terminal
+                if now - t_status >= 0.25:
+                    t_status = now
+                    kick['flashes'] = [t for t in kick['flashes'] if now - t < 4.0]
+                    cur = target['look']
+                    with lock:
+                        status.update(section=section, strips=applied_section if cur is not None else None,
+                                      speed=cur[2] if cur else None, brightness=cur[1] if cur else None,
+                                      bpm=bpm, kick_db=thr, gain_db=20 * np.log10(agc['gain']),
+                                      flash_rate=len(kick['flashes']) / 4.0, flashing=since_hit < 0.15)
+                    if not args.stats:
+                        bpm_s = f'{bpm:5.1f}' if bpm else '  ?  '
+                        print(f'\rsong: {section:6s} bpm {bpm_s} | strips: {applied_section:6s} | '
+                              f'kick {thr:4.1f} dB | gain {20 * np.log10(agc["gain"]):+3.0f} dB   ',
+                              end='', flush=True)
     except KeyboardInterrupt:
         pass
     finally:
@@ -536,9 +523,6 @@ def main():
                 ctx['kb'].write(BANK_LIGHT, SIDE, saved[9:17])
                 if args.debug_restore:
                     print('saved:', saved.hex(' '))
-                    for t, cmd, plain in ctx['kb'].history[-8:]:
-                        if cmd in (0xD5, 0xD6):
-                            print(f'  {cmd:#04x} {plain.hex(" ")}')
                     print('now  :', ctx['kb'].read(BANK_LIGHT, 0, 17).hex(' '))
                 ctx['kb'].close()
                 print('\nlighting restored')
