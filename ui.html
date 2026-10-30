@@ -6,100 +6,166 @@
 <title>Keyboard Visualizer</title>
 <style>
   :root {
-    --bg: #111214; --panel: #1a1c20; --line: #2a2d33; --text: #e8e8ea; --muted: #9a9ca3;
-    --accent: #ff3b3b; --accent-soft: #ff3b3b22; --ok: #4cd07d;
+    --bg: #0f1012; --panel: #17181b; --panel-2: #1e2024; --line: #26282d; --text: #ececee; --muted: #8d9098;
+    --accent: #ff3b3b; --accent-soft: #ff3b3b1f; --ok: #4cd07d; --warn: #e0a33a;
+    --radius: 14px;
   }
   * { box-sizing: border-box; }
+  html { color-scheme: dark; }
   body { margin: 0; background: var(--bg); color: var(--text);
-         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line);
-           padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-  h1 { font-size: 16px; margin: 0 12px 0 0; font-weight: 600; letter-spacing: .2px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; }
-  .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px;
-          font-size: 12.5px; color: var(--muted); white-space: nowrap; }
-  .chip b { color: var(--text); font-weight: 600; }
-  .chip.hype b { color: var(--accent); }
-  .chip.flash { border-color: #fff; box-shadow: 0 0 0 2px #ffffff33; }
-  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .actions.profile { padding-left: 12px; border-left: 1px solid var(--line); }
-  .actions.profile label { color: var(--muted); font-size: 12.5px; }
-  .actions.profile select { max-width: 180px; }
-  @media (max-width: 760px) { .actions.profile { padding-left: 0; border-left: 0; } }
-  button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
-           padding: 7px 13px; font: inherit; cursor: pointer; }
-  button:hover { border-color: #444851; }
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  button, select, input { font: inherit; color: inherit; }
+
+  /* header */
+  header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent);
+           backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 980px; margin: 0 auto; padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 10px 14px;
+         align-items: center; }
+  h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .1px; }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; flex: 1; min-width: 0; }
+  .status b { color: var(--text); font-weight: 600; }
+  .status .sec-hype { color: var(--accent); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #50535a; flex: none; transition: background .08s, box-shadow .08s; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px #4cd07d26; }
+  .dot.kick { background: #fff; box-shadow: 0 0 0 4px #ffffff40; }
+  .status .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .group { display: flex; align-items: center; gap: 8px; }
+
+  button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 7px 13px;
+           cursor: pointer; transition: border-color .12s, background .12s, opacity .12s; }
+  button:hover:not(:disabled) { border-color: #3c3f46; }
+  button:disabled { opacity: .45; cursor: default; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  main { padding: 20px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-         max-width: 1200px; margin: 0 auto; }
-  section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
-  section h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .8px;
-               color: var(--muted); font-weight: 600; }
-  .row { padding: 9px 0; border-top: 1px solid var(--line); }
-  .row:first-of-type { border-top: 0; }
-  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  .top label { font-weight: 500; }
-  .val { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 48px; text-align: right; }
-  .help { color: var(--muted); font-size: 12px; margin-top: 3px; }
-  .saves { color: #e0a33a; font-size: 11px; margin-left: 6px; }
-  input[type=range] { width: 100%; margin-top: 6px; accent-color: var(--accent); }
-  input[type=color] { width: 44px; height: 28px; border: 1px solid var(--line); border-radius: 6px;
+  button.primary:hover:not(:disabled) { background: #ff5252; border-color: #ff5252; }
+  button.go { min-width: 78px; }
+  button.attn { border-color: var(--accent); color: #ff7070; font-weight: 600; }
+  select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 6px 10px; cursor: pointer; }
+  #profile { max-width: 150px; min-width: 0; }
+  .plabel { color: var(--muted); font-size: 13px; }
+
+  /* menu */
+  .menu { position: relative; }
+  .menu summary { list-style: none; cursor: pointer; border: 1px solid var(--line); background: var(--panel-2);
+                  border-radius: 9px; padding: 6px 11px; line-height: 1.3; user-select: none; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu[open] summary { border-color: #3c3f46; }
+  .menu-list { position: absolute; right: 0; top: calc(100% + 6px); min-width: 190px; background: var(--panel-2);
+               border: 1px solid var(--line); border-radius: 11px; padding: 5px; box-shadow: 0 12px 32px #0009; z-index: 6; }
+  .menu-list button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px 10px; border-radius: 7px; }
+  .menu-list button:hover:not(:disabled) { background: #ffffff0d; }
+  .menu-list hr { border: 0; border-top: 1px solid var(--line); margin: 5px 2px; }
+  .menu-list .danger { color: #ff8a8a; }
+
+  .offline { display: none; background: #3a1d1d; color: #ffc2c2; text-align: center; padding: 9px 16px; font-size: 13px; }
+  .offline code { background: #0003; padding: 1px 5px; border-radius: 4px; }
+
+  /* sections */
+  main { max-width: 980px; margin: 0 auto; padding: 20px; display: grid; gap: 16px;
+         grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr)); align-items: start; }
+  section { min-width: 0; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 18px 10px; }
+  section h2 { margin: 12px 0 4px; font-size: 13.5px; font-weight: 650; }
+  .row { padding: 11px 0; border-top: 1px solid var(--line); }
+  section > .row:first-of-type, details.adv > .rows > .row:first-child { border-top: 0; }
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 26px; }
+  .top > label:first-child { font-weight: 500; }
+  .val { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+  .help { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .flash-mem { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warn);
+               margin-left: 7px; vertical-align: 2px; }
+
+  input[type=range] { width: 100%; margin: 8px 0 0; accent-color: var(--accent); cursor: pointer; }
+  input[type=color] { width: 40px; height: 26px; border: 1px solid var(--line); border-radius: 7px;
                       background: none; padding: 0; cursor: pointer; }
-  select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
-           padding: 5px 8px; font: inherit; max-width: 60%; }
-  .switch { position: relative; width: 40px; height: 22px; flex: none; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .switch span { position: absolute; inset: 0; background: var(--line); border-radius: 999px; transition: .15s; cursor: pointer; }
+  input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+  input[type=color]::-webkit-color-swatch { border: 0; border-radius: 5px; }
+  .row select { max-width: 62%; }
+
+  .trio { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 14px; margin-top: 6px; }
+  .trio .part { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .trio input[type=range] { margin-top: 4px; }
+
+  .switch { position: relative; width: 38px; height: 22px; flex: none; }
+  .switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .switch span { position: absolute; inset: 0; background: #34363c; border-radius: 999px; transition: .15s; pointer-events: none; }
   .switch span::after { content: ""; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px;
                         background: #fff; border-radius: 50%; transition: .15s; }
   .switch input:checked + span { background: var(--accent); }
-  .switch input:checked + span::after { transform: translateX(18px); }
-  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--ok); color: #062;
-           padding: 8px 16px; border-radius: 8px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
-  #toast.show { opacity: 1; }
-  #toast.bad { background: #ff6b6b; color: #300; }
-  .offline { background: #3a1d1d; color: #ffb4b4; padding: 8px 20px; display: none; }
-  .note { color: var(--muted); font-size: 12px; padding: 0 20px 24px; max-width: 1200px; margin: 0 auto; }
-  @media (max-width: 600px) { header { padding: 12px 16px; } main { padding: 16px; } }
+  .switch input:checked + span::after { transform: translateX(16px); }
+  .switch input:focus-visible + span { outline: 2px solid #fff6; outline-offset: 2px; }
+
+  details.adv { border-top: 1px solid var(--line); margin-top: 2px; }
+  details.adv summary { cursor: pointer; color: var(--muted); font-size: 12.5px; padding: 10px 0 4px; list-style: none;
+                        user-select: none; }
+  details.adv summary::-webkit-details-marker { display: none; }
+  details.adv summary::before { content: "›"; display: inline-block; width: 12px; transition: transform .15s; }
+  details.adv[open] summary::before { transform: rotate(90deg); }
+  details.adv summary:hover { color: var(--text); }
+  .adv-actions { padding: 8px 0 4px; }
+
+  footer { max-width: 980px; margin: 0 auto; padding: 0 20px 28px; color: var(--muted); font-size: 12px;
+           display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  footer .stats { font-variant-numeric: tabular-nums; }
+
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translate(-50%, 8px); background: #262a2f;
+           border: 1px solid #353941; color: var(--text); padding: 9px 16px; border-radius: 10px; font-weight: 500;
+           opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; box-shadow: 0 8px 24px #0008;
+           max-width: calc(100vw - 32px); }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast.bad { background: #4a1f1f; border-color: #6b2b2b; color: #ffd0d0; }
+
+  @media (max-width: 640px) {
+    .bar { padding: 10px 16px; }
+    .status { order: 3; flex-basis: 100%; }
+    .group.right { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+    .plabel { display: none; }
+    main { padding: 16px; }
+    footer { padding: 0 16px 24px; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>Keyboard Visualizer</h1>
-  <div class="chips">
-    <span class="chip" id="c-song">song <b>–</b></span>
-    <span class="chip" id="c-strips">strips <b>–</b></span>
-    <span class="chip" id="c-bpm">bpm <b>–</b></span>
-    <span class="chip" id="c-kick">kick <b>–</b></span>
-    <span class="chip" id="c-flash">flashes/s <b>–</b></span>
-    <span class="chip" id="c-gain">gain <b>–</b></span>
+  <div class="bar">
+    <h1>Keyboard Visualizer</h1>
+    <div class="status"><span class="dot" id="dot"></span><span class="text" id="status">Connecting…</span></div>
+    <div class="group right">
+      <label class="plabel" for="profile">Profile</label>
+      <select id="profile" title="Profile — switching loads its saved settings" aria-label="Profile"></select>
+      <button id="b-save" title="Save the current settings into this profile">Save</button>
+      <details class="menu" id="menu">
+        <summary title="More" aria-label="More">⋯</summary>
+        <div class="menu-list">
+          <button id="b-saveas">Save as new profile…</button>
+          <button id="b-defaults">Reset to defaults</button>
+          <button id="b-delete" class="danger">Delete profile</button>
+          <hr>
+          <button id="b-quit">Quit visualizer</button>
+        </div>
+      </details>
+      <button id="b-run" class="go primary">Start</button>
+    </div>
   </div>
-  <div class="actions">
-    <button id="b-kick" title="Restart auto kick sensitivity from the threshold slider">Re-learn kicks</button>
-    <button id="b-defaults" title="Reset the sliders to the built-in defaults (not saved until you press Save)">Defaults</button>
-  </div>
-  <div class="actions profile">
-    <label for="profile">Profile</label>
-    <select id="profile" title="Switch profile (loads its saved settings)"></select>
-    <button id="b-save" class="primary" title="Save the current settings into this profile">Save</button>
-    <button id="b-saveas" title="Save the current settings as a new profile">Save as…</button>
-    <button id="b-delete" title="Delete this profile">Delete</button>
-    <button id="b-stop" title="Stop the visualizer and restore your normal lighting">Stop</button>
-    <button id="b-quit" title="Close the visualizer program">Quit</button>
-  </div>
+  <div class="offline" id="offline">The visualizer isn't running. Start <code>python spectrum.py</code>, then reload this page.</div>
 </header>
-<div class="offline" id="offline">The visualizer isn't running (stopped, or not started) — start <code>python spectrum.py</code> and reload this page.</div>
 <main id="main"></main>
-<p class="note">Changes apply instantly. <b>Save</b> keeps them for next time. Settings marked
-  <span class="saves">● saves</span> write the keyboard's memory, so they apply when you let go of the slider.</p>
-<div id="toast">Saved</div>
+<footer>
+  <span>Changes apply instantly · <b>Save</b> keeps them for next time ·
+    <span class="flash-mem" style="margin:0 3px 0 0"></span>stored in the keyboard, applied when you let go</span>
+  <span class="stats" id="stats"></span>
+</footer>
+<div id="toast" role="status"></div>
 <script>
 const $ = (s) => document.querySelector(s);
 let schema = null, settings = {}, pending = {}, timer = null;
+let running = false, current = null, lastError = null, unsaved = false;
+const openAdv = new Set(JSON.parse((() => { try { return localStorage.getItem('adv') || '[]'; } catch (_) { return '[]'; } })()));
 
 const hex = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
 const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
-const fmt = (s, v) => s.type === 'range' ? (Number.isInteger(s.step) ? v : (+v).toFixed(2).replace(/\.?0+$/, '')) : v;
+const fmt = (s, v) => Number.isInteger(s.step) ? String(Math.round(v)) : (+v).toFixed(2).replace(/\.?0+$/, '');
+const shown = (s) => !s.when || Object.entries(s.when).every(([k, vals]) => vals.includes(settings[k]));
+const memDot = (s) => s.saves ? '<span class="flash-mem" title="Stored in the keyboard; applied when you let go"></span>' : '';
 
 async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) });
@@ -109,37 +175,43 @@ async function api(path, body) {
 
 function send(key, value, now) {
   pending[key] = value;
+  settings[key] = value;
   clearTimeout(timer);
   timer = setTimeout(flush, now ? 0 : 80);
 }
 async function flush() {
+  clearTimeout(timer);
   const body = pending; pending = {};
   if (Object.keys(body).length) settings = (await api('/api/settings', body)).settings;
+}
+
+function slider(s, inp, val) {
+  inp.addEventListener('input', () => { val.textContent = fmt(s, inp.value); if (!s.saves) send(s.key, +inp.value); });
+  inp.addEventListener('change', () => send(s.key, +inp.value, true));
 }
 
 function control(s) {
   const row = document.createElement('div');
   row.className = 'row';
   const v = settings[s.key];
-  const tag = s.saves ? '<span class="saves">● saves</span>' : '';
+  const id = 'f-' + s.key;
+  const label = `<label for="${id}">${s.label}${memDot(s)}</label>`;
   if (s.type === 'range') {
-    row.innerHTML = `<div class="top"><label>${s.label}${tag}</label><span class="val">${fmt(s, v)}</span></div>
-      <input type="range" min="${s.min}" max="${s.max}" step="${s.step}" value="${v}">`;
-    const inp = row.querySelector('input'), val = row.querySelector('.val');
-    inp.addEventListener('input', () => { val.textContent = fmt(s, inp.value); if (!s.saves) send(s.key, +inp.value); });
-    inp.addEventListener('change', () => send(s.key, +inp.value, true));
+    row.innerHTML = `<div class="top">${label}<span class="val">${fmt(s, v)}</span></div>
+      <input id="${id}" type="range" min="${s.min}" max="${s.max}" step="${s.step}" value="${v}">`;
+    slider(s, row.querySelector('input'), row.querySelector('.val'));
   } else if (s.type === 'bool') {
-    row.innerHTML = `<div class="top"><label>${s.label}${tag}</label>
-      <label class="switch"><input type="checkbox" ${v ? 'checked' : ''}><span></span></label></div>`;
+    row.innerHTML = `<div class="top">${label}<span class="switch"><input id="${id}" type="checkbox" role="switch"
+      ${v ? 'checked' : ''}><span></span></span></div>`;
     const inp = row.querySelector('input');
-    inp.addEventListener('change', () => send(s.key, inp.checked, true));
+    inp.addEventListener('change', () => { send(s.key, inp.checked, true); render(); });
   } else if (s.type === 'select') {
-    row.innerHTML = `<div class="top"><label>${s.label}${tag}</label><select>${
+    row.innerHTML = `<div class="top">${label}<select id="${id}">${
       s.options.map(([k, t]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>`;
     const inp = row.querySelector('select');
-    inp.addEventListener('change', () => send(s.key, inp.value, true));
+    inp.addEventListener('change', () => { send(s.key, inp.value, true); render(); });
   } else if (s.type === 'color') {
-    row.innerHTML = `<div class="top"><label>${s.label}${tag}</label><input type="color" value="${hex(v)}"></div>`;
+    row.innerHTML = `<div class="top">${label}<input id="${id}" type="color" value="${hex(v)}"></div>`;
     const inp = row.querySelector('input');
     inp.addEventListener('input', () => { if (!s.saves) send(s.key, rgb(inp.value)); });
     inp.addEventListener('change', () => send(s.key, rgb(inp.value), true));
@@ -148,71 +220,155 @@ function control(s) {
   return row;
 }
 
-function render() {
-  const main = $('#main');
-  main.innerHTML = '';
-  const groups = {};
-  for (const s of schema) {
-    if (!groups[s.group]) {
-      const sec = document.createElement('section');
-      sec.innerHTML = `<h2>${s.group}</h2>`;
-      main.appendChild(sec);
-      groups[s.group] = sec;
-    }
-    groups[s.group].appendChild(control(s));
+// calm / medium / hype sliders of one setting, side by side
+function trioControl(name, parts) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const one = parts.length === 1;
+  row.innerHTML = `<div class="top"><label>${name}${memDot(parts[0])}</label>${one ? `<span class="val"></span>` : ''}</div>
+    <div class="trio" style="--n:${parts.length}"></div>`;
+  const grid = row.querySelector('.trio');
+  for (const s of parts) {
+    const cell = document.createElement('div');
+    cell.innerHTML = `${one ? '' : `<div class="part"><span>${s.part}</span><span class="val"></span></div>`}
+      <input type="range" min="${s.min}" max="${s.max}" step="${s.step}" value="${settings[s.key]}" aria-label="${s.label}">`;
+    grid.appendChild(cell);
+    const val = one ? row.querySelector('.top .val') : cell.querySelector('.val');
+    val.textContent = fmt(s, settings[s.key]);
+    slider(s, cell.querySelector('input'), val);
   }
+  const help = parts.find((s) => s.help);
+  if (help) row.insertAdjacentHTML('beforeend', `<div class="help">${help.help}</div>`);
+  return row;
 }
 
-function chip(id, value, cls) {
-  const el = $(id);
-  el.querySelector('b').textContent = value;
-  el.classList.toggle('hype', cls === 'hype');
+function rows(list) {
+  const out = [];
+  for (let i = 0; i < list.length; i++) {
+    const s = list[i];
+    if (s.trio) {
+      const parts = [s];
+      while (list[i + 1] && list[i + 1].trio === s.trio) parts.push(list[++i]);
+      out.push(trioControl(s.trio, parts));
+    } else out.push(control(s));
+  }
+  return out;
+}
+
+function render() {
+  const main = $('#main');
+  const scroll = window.scrollY;
+  main.innerHTML = '';
+  const groups = [...new Set(schema.map((s) => s.group))];
+  for (const g of groups) {
+    const items = schema.filter((s) => s.group === g && shown(s));
+    const sec = document.createElement('section');
+    sec.innerHTML = `<h2>${g}</h2>`;
+    rows(items.filter((s) => !s.adv)).forEach((r) => sec.appendChild(r));
+    const adv = items.filter((s) => s.adv);
+    const kicks = g === 'Kick flash' && settings.punch_on;
+    if (adv.length || kicks) {
+      const d = document.createElement('details');
+      d.className = 'adv';
+      d.open = openAdv.has(g);
+      d.innerHTML = '<summary>Advanced</summary><div class="rows"></div>';
+      rows(adv).forEach((r) => d.querySelector('.rows').appendChild(r));
+      if (kicks) {
+        d.insertAdjacentHTML('beforeend', '<div class="adv-actions"><button id="b-kick" title="Restart auto sensitivity from the threshold slider">Re-learn kicks</button></div>');
+        d.querySelector('#b-kick').onclick = async () => { await api('/api/action', { name: 'reset_kick' }); toast('Re-learning kicks'); };
+      }
+      d.addEventListener('toggle', () => {
+        d.open ? openAdv.add(g) : openAdv.delete(g);
+        try { localStorage.setItem('adv', JSON.stringify([...openAdv])); } catch (_) {}
+      });
+      sec.appendChild(d);
+    }
+    main.appendChild(sec);
+  }
+  window.scrollTo(0, scroll);
+}
+
+function showStatus(s) {
+  running = !!s.running;
+  const run = $('#b-run');
+  run.textContent = running ? 'Stop' : 'Start';
+  run.classList.toggle('primary', !running);
+  run.title = running ? 'Stop and give the keyboard back (your lighting is restored)' : 'Take over the keyboard lighting';
+  $('#dot').className = 'dot' + (running ? (s.flashing ? ' kick' : ' on') : '');
+  if (!running) {
+    $('#status').innerHTML = 'Stopped · your normal lighting is on';
+  } else if (!s.section) {
+    $('#status').innerHTML = 'Starting…';
+  } else {
+    const sec = s.section === 'silent' ? 'No sound' : s.section[0].toUpperCase() + s.section.slice(1);
+    const bpm = s.bpm ? ` · <b>${Math.round(s.bpm)}</b> bpm` : '';
+    $('#status').innerHTML = `<b class="sec-${s.section}">${sec}</b>${bpm}`;
+  }
+  const parts = [];
+  if (running && s.section) {
+    if (s.strips) parts.push(`strips ${s.strips} · speed ${s.speed} · ${s.brightness}%`);
+    if (s.kick_db != null) parts.push(`kick ${s.kick_db.toFixed(1)} dB`);
+    if (s.flash_rate != null) parts.push(`${s.flash_rate.toFixed(1)} flashes/s`);
+    if (s.gain_db != null) parts.push(`gain ${s.gain_db > 0 ? '+' : ''}${Math.round(s.gain_db)} dB`);
+  }
+  $('#stats').textContent = parts.join('  ·  ');
+  if (s.error && s.error !== lastError) toast(s.error, true);
+  lastError = s.error;
 }
 
 async function poll() {
   try {
     const st = await api('/api/state');
     $('#offline').style.display = 'none';
+    $('#b-run').disabled = false;
     if (!schema) { schema = st.schema; settings = st.settings; render(); showProfiles(st.profiles, st.profile); }
     // settings changed elsewhere (another tab, a profile load): follow them, unless the user is mid-edit
-    const editing = document.activeElement && ['INPUT', 'SELECT'].includes(document.activeElement.tagName)
-                    && document.activeElement.id !== 'profile';
+    const a = document.activeElement;
+    const editing = a && ['INPUT', 'SELECT'].includes(a.tagName) && a.id !== 'profile';
     if (!editing && !Object.keys(pending).length && JSON.stringify(st.settings) !== JSON.stringify(settings)) {
       settings = st.settings; render();
     }
     if (st.profile !== current || st.profiles.length !== $('#profile').options.length) showProfiles(st.profiles, st.profile);
-    const s = st.status;
-    chip('#c-song', s.section || '–', s.section);
-    chip('#c-strips', s.strips ? `${s.strips} · speed ${s.speed} · ${s.brightness}%` : '–', s.strips);
-    chip('#c-bpm', s.bpm ? Math.round(s.bpm) : '?');
-    chip('#c-kick', s.kick_db != null ? `${s.kick_db.toFixed(1)} dB` : '–');
-    chip('#c-flash', s.flash_rate != null ? s.flash_rate.toFixed(1) : '–');
-    chip('#c-gain', s.gain_db != null ? `${s.gain_db > 0 ? '+' : ''}${Math.round(s.gain_db)} dB` : '–');
-    $('#c-flash').classList.toggle('flash', !!s.flashing);
-    running = !!s.running;
-    $('#b-stop').textContent = running ? 'Stop' : 'Start';
-    $('#b-stop').title = running ? 'Stop the visualizer and restore your normal lighting' : 'Start the visualizer';
-    $('#b-stop').classList.toggle('primary', !running);
-    if (s.error && s.error !== lastError) toast(s.error, true);
-    lastError = s.error;
+    unsaved = !!st.unsaved;
+    $('#b-save').disabled = !unsaved;
+    $('#b-save').textContent = unsaved ? 'Save' : 'Saved';
+    $('#b-save').classList.toggle('attn', unsaved);
+    showStatus(st.status);
   } catch (e) {
     $('#offline').style.display = 'block';
+    $('#status').textContent = 'Not running';
+    $('#dot').className = 'dot';
+    $('#b-run').disabled = true;
   }
 }
 
-let current = null;
 function showProfiles(list, active) {
   current = active;
   $('#profile').innerHTML = list.map((n) => `<option ${n === active ? 'selected' : ''}>${n}</option>`).join('');
   $('#b-delete').disabled = list.length < 2;
 }
-async function errorToast(e) {
+function toast(t, bad) {
+  const el = $('#toast');
+  el.textContent = t;
+  el.classList.toggle('bad', !!bad);
+  el.classList.add('show');
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => el.classList.remove('show'), bad ? 3500 : 1600);
+}
+function errorToast(e) {
   let msg = String(e.message || e);
   try { msg = JSON.parse(msg).error || msg; } catch (_) {}
   toast(msg, true);
 }
+const closeMenu = () => $('#menu').removeAttribute('open');
+document.addEventListener('click', (e) => { if (!$('#menu').contains(e.target)) closeMenu(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+
 $('#profile').onchange = async () => {
   const name = $('#profile').value;
+  if (unsaved && !confirm(`Switch to "${name}"? Unsaved changes to "${current}" will be lost.`)) {
+    $('#profile').value = current; return;
+  }
   try {
     await flush();
     const r = await api('/api/profile/load', { name });
@@ -220,7 +376,11 @@ $('#profile').onchange = async () => {
     toast(`Loaded "${name}"`);
   } catch (e) { errorToast(e); $('#profile').value = current; }
 };
+$('#b-save').onclick = async () => {
+  try { await flush(); await api('/api/save', {}); toast(`Saved to "${current}"`); poll(); } catch (e) { errorToast(e); }
+};
 $('#b-saveas').onclick = async () => {
+  closeMenu();
   const name = (prompt('Name for the new profile:') || '').trim();
   if (!name) return;
   try {
@@ -230,7 +390,14 @@ $('#b-saveas').onclick = async () => {
     toast(`Saved as "${name}"`);
   } catch (e) { errorToast(e); }
 };
+$('#b-defaults').onclick = async () => {
+  closeMenu();
+  if (!confirm(`Reset all settings to the built-in defaults?\n\n"${current}" stays as saved unless you press Save afterwards.`)) return;
+  settings = (await api('/api/defaults', {})).settings; render();
+  toast('Defaults loaded — press Save to keep them');
+};
 $('#b-delete').onclick = async () => {
+  closeMenu();
   if (!confirm(`Delete profile "${current}"?`)) return;
   try {
     const gone = current;
@@ -240,33 +407,21 @@ $('#b-delete').onclick = async () => {
     toast(`Deleted "${gone}" — now on "${r.profile}"`);
   } catch (e) { errorToast(e); }
 };
-
-function toast(t, bad) {
-  const el = $('#toast');
-  el.textContent = t;
-  el.classList.toggle('bad', !!bad);
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), bad ? 3000 : 1400);
-}
-$('#b-save').onclick = async () => { await flush(); await api('/api/save', {}); toast(`Saved to "${current}"`); };
-$('#b-defaults').onclick = async () => {
-  if (!confirm(`Reset all sliders to the built-in defaults?\n\nYour saved profile "${current}" is not changed unless you press Save afterwards. To get it back, pick it in the Profile list again.`)) return;
-  settings = (await api('/api/defaults', {})).settings; render();
-  toast(`Defaults loaded — "${current}" is unchanged until you press Save`);
-};
-let running = false, lastError = null;
-$('#b-stop').onclick = async () => {
-  await flush();
-  await api('/api/action', { name: running ? 'stop' : 'start' });
-  toast(running ? 'Stopping — lighting restored' : 'Starting');
+$('#b-run').onclick = async () => {
+  try {
+    await flush();
+    await api('/api/action', { name: running ? 'stop' : 'start' });
+    toast(running ? 'Stopping — your lighting is restored' : 'Starting');
+  } catch (e) { errorToast(e); }
 };
 $('#b-quit').onclick = async () => {
-  if (!confirm('Close the visualizer program? (Unsaved settings are lost.)')) return;
-  await flush();
-  await api('/api/action', { name: 'quit' });
-  toast('Closing — lighting restored');
+  closeMenu();
+  if (!confirm('Quit the visualizer? Your lighting is restored and this page stops working.' +
+               (unsaved ? '\n\nUnsaved settings will be lost.' : ''))) return;
+  await flush().catch(() => {});
+  api('/api/action', { name: 'quit' }).catch(() => {});        // the program may exit before it answers
+  toast('Quitting — your lighting is restored');
 };
-$('#b-kick').onclick =async () => { await api('/api/action', { name: 'reset_kick' }); toast('Re-learning kicks'); };
 
 poll();
 setInterval(poll, 250);
