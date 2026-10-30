@@ -1,8 +1,8 @@
 """Music visualizer for the NuPhy Air75 V3, with a live settings page.
 
-Keys: 16 frequency bands across the keyboard's columns (custom per-LED mode), white flash on kicks.
+Keys: 16 frequency bands (custom per-LED mode) drawn as bars, mirror, rings or a waterfall; flash on kicks.
 Side strips: built-in flowing effect, brightness/speed follow the song's sections.
-Captures whatever the computer is playing (WASAPI loopback on Windows; BlackHole on macOS, see README).
+Captures whatever the computer is playing (WASAPI loopback on Windows; a system audio tap on macOS, see README).
 Close NuPhy IO first (it and this script each set their own session key).
 
   python spectrum.py                 # opens the settings page at http://localhost:8765
@@ -25,7 +25,6 @@ from visualizer.layout import KEYS, N_ROWS, WIDTH
 
 RATE, HOP, FFT = 48000, 1024, 4096      # ~21 ms per update, 11.7 Hz bins
 N_BANDS = 16
-F_LO, F_HI = 40, 16000
 BASS = (40, 150)
 STATE_FILE = os.path.join(DATA_DIR, 'saved_lighting.json')
 CRASH_LOG = os.path.join(DATA_DIR, 'crash_log.txt')
@@ -44,7 +43,7 @@ SECTION_RANK = {'silent': 0, 'calm': 1, 'medium': 2, 'hype': 3}
 def parse_args():
     p = argparse.ArgumentParser(description='Most settings live on the settings page; these are startup options.')
     p.add_argument('--device', help='Windows: part of the output device name (default: system default); '
-                        'macOS: part of the input device name (default: BlackHole)')
+                        'macOS: part of an input device name, e.g. BlackHole (default: system audio tap, 14.2+)')
     p.add_argument('--side', choices=('flash',),
                    help='special side-strip mode not on the settings page: flash = brightness flashes on kicks '
                         '(wears flash memory!)')
@@ -57,10 +56,10 @@ def parse_args():
     return p.parse_args()
 
 
-def band_plan():
-    """Per band: (fft_size, bin mask). Long windows only where needed for frequency resolution (bass);
-    mids and highs use short windows so they react sooner."""
-    edges = np.geomspace(F_LO, F_HI, N_BANDS + 1)
+def band_plan(f_lo, f_hi):
+    """Per band of f_lo..f_hi Hz: (fft_size, bin mask). Long windows only where needed for frequency
+    resolution (bass); mids and highs use short windows so they react sooner."""
+    edges = np.geomspace(f_lo, f_hi, N_BANDS + 1)
     plan = []
     for lo, hi in zip(edges[:-1], edges[1:]):
         n = 4096 if lo < 150 else 2048 if lo < 800 else 1024
@@ -73,17 +72,42 @@ def band_plan():
     return plan, windows
 
 
-def key_frame(levels, rgb, punch=0.0, punch_rgb=(255, 255, 255)):
+COL_BAND = {idx: min(int(x / WIDTH * N_BANDS), N_BANDS - 1) for idx, _, x in KEYS}   # bass on the left
+_ring = {idx: np.hypot(x - WIDTH / 2, row - (N_ROWS - 1) / 2) for idx, row, x in KEYS}  # from the centre
+RING_BAND = {idx: min(int(d / max(_ring.values()) * N_BANDS), N_BANDS - 1) for idx, d in _ring.items()}
+WATERFALL_STEP = 0.08          # s per row: the waterfall shows the last ~0.5 s
+
+
+def key_frame(levels, rgb, punch=0.0, punch_rgb=(255, 255, 255), origin='bottom', style='bars', history=None):
     """levels: N_BANDS values in rows (0..N_ROWS); punch 0..1 blends lit keys towards punch_rgb.
+    style: bars | mirror (bars up and down from the middle rows) | rings (bass in the centre, treble at the
+    edges, brightness = level) | waterfall (history: N_ROWS level arrays, newest first; F-row = now).
+    origin (bars only): the edge the bars grow from. bottom/top: a band per column, bass on the left.
+    left/right: a band per row (the 16 bands merged into 6), bass on the bottom row.
     Returns {index: (r,g,b)}."""
     punch = np.ceil(punch * PUNCH_STEPS) / PUNCH_STEPS
     col = tuple(c + (p - c) * punch for c, p in zip(rgb, punch_rgb))
+    sideways = style == 'bars' and origin in ('left', 'right')
+    if sideways:
+        rows = [g.max() for g in np.array_split(levels, N_ROWS)][::-1]   # row 0 = F-row = treble
     out = {}
     for idx, row, x in KEYS:
-        band = min(int(x / WIDTH * N_BANDS), N_BANDS - 1)
-        height = N_ROWS - row                      # bottom row = 1, F-row = 6
-        fill = np.clip(levels[band] - (height - 1), 0.0, 1.0)
-        fill = np.ceil(fill * FILL_STEPS) / FILL_STEPS
+        if style == 'mirror':
+            dist = abs(row - (N_ROWS - 1) / 2) + 0.5    # 1 = the two middle rows, 3 = top and bottom rows
+            fill = np.clip(levels[COL_BAND[idx]] / 2 - (dist - 1), 0.0, 1.0)
+        elif style == 'rings':
+            fill = np.clip(levels[RING_BAND[idx]] / N_ROWS, 0.0, 1.0)
+        elif style == 'waterfall':
+            fill = np.clip(history[row][COL_BAND[idx]] / N_ROWS, 0.0, 1.0)
+        elif sideways:
+            length = rows[row] / N_ROWS * WIDTH        # bar length in key units
+            dist = x if origin == 'left' else WIDTH - x   # key centre from the starting edge
+            fill = np.clip(length - (dist - 0.5), 0.0, 1.0)
+        else:
+            height = N_ROWS - row if origin == 'bottom' else row + 1   # 1 = the row the bars start from
+            fill = np.clip(levels[COL_BAND[idx]] - (height - 1), 0.0, 1.0)
+        # rounding up keeps a bar's top key visible, but fading levels never reach 0: below 2% is dark
+        fill = np.ceil(fill * FILL_STEPS) / FILL_STEPS if fill >= 0.02 else 0.0
         out[idx] = tuple(int(c * fill) for c in col)
     return out
 
@@ -241,9 +265,11 @@ def main():
         stop = threading.Event()                 # tells this session's writer thread to finish
         kb = Keyboard()
         saved = saved_lighting(kb)
+        leds = bytearray(len(KEYS) * 3)          # what the keys show now, RGB by LED index, for the page
         with lock:
             status.clear()
             status['running'] = True
+            status['leds'] = leds
 
         def setup(kb, look):
             kb.write(BANK_LIGHT, 0, [MAIN_CUSTOM, 100])
@@ -295,6 +321,7 @@ def main():
                     except OSError:
                         continue
                     sent.update({i: (0, 0, 0) for i in sent})
+                    leds[:] = bytes(len(leds))
                     w['look'] = cur_look
 
         def write_once(sent, w):
@@ -318,6 +345,7 @@ def main():
                 st['leds'] += len(changed)
                 for i, *c in changed:
                     sent[i] = tuple(c)
+                    leds[3 * i:3 * i + 3] = bytes(c)
             else:
                 time.sleep(0.004)
 
@@ -329,10 +357,12 @@ def main():
 
         live['kick'] = kick
 
-        plan, windows = band_plan()
+        plan, windows = band_plan(cfg['f_lo'], cfg['f_hi'])
+        plan_range = (cfg['f_lo'], cfg['f_hi'])
         buf = np.zeros(FFT)
         agc = {'db': None, 'gain': 1.0, 'digital_silence': True}
         levels = np.zeros(N_BANDS)
+        history, t_history = [levels] * N_ROWS, 0.0     # waterfall rows, newest first
         avg_db = None                  # average band loudness over the last `memory` seconds (dB)
         short_db = None                # per-band level over the last ~0.3 s, for punchiness
         SHORT_S = 0.3
@@ -400,6 +430,10 @@ def main():
                     # --- spectrum bars
                     # silent = no signal at all, or 40 dB below the song's normal level (at any volume)
                     silent = agc['digital_silence'] or np.sqrt(np.mean(buf[-HOP:] ** 2)) < 10 ** ((AGC_TARGET_DB - 40) / 20)
+                    if (c['f_lo'], c['f_hi']) != plan_range:      # frequency range changed on the page
+                        plan_range = (c['f_lo'], c['f_hi'])
+                        plan, windows = band_plan(*plan_range)
+                        tilt, short_db = np.zeros(N_BANDS), None     # per-band history no longer matches
                     mags = {n: np.abs(np.fft.rfft(buf[-n:] * w)) * (FFT / n) for n, w in windows.items()}
                     energy = np.array([mags[n][m].mean() for n, m in plan])
                     db = 20 * np.log10(energy + 1e-9)
@@ -479,7 +513,10 @@ def main():
                     # --- keys
                     since_hit = now - last_flash
                     punch = max(0.0, 1 - since_hit / (c['punch_ms'] / 1000)) if c['punch_on'] else 0.0
-                    frame = key_frame(levels, tuple(c['color']), punch, tuple(c['punch_color']))
+                    if now - t_history >= WATERFALL_STEP:
+                        history, t_history = [levels.copy()] + history[:-1], now
+                    frame = key_frame(levels, tuple(c['color']), punch, tuple(c['punch_color']), c['origin'],
+                                      c['style'], history)
                     with lock:
                         target['keys'] = frame
                         target['side'] = 100 if since_hit < 0.18 else 0
@@ -492,6 +529,7 @@ def main():
                         with lock:
                             status.update(section=section, strips=applied_section if cur is not None else None,
                                           speed=cur[2] if cur else None, brightness=cur[1] if cur else None,
+                                          look=list(cur) if cur else None,
                                           bpm=bpm, kick_db=thr, gain_db=20 * np.log10(agc['gain']),
                                           flash_rate=len(kick['flashes']) / 4.0, flashing=since_hit < 0.15)
                         if not args.stats:

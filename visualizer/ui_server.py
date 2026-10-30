@@ -8,7 +8,7 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import DATA_DIR
+from . import DATA_DIR, layout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LEGACY_SETTINGS = os.path.join(DATA_DIR, 'settings.json')        # pre-profiles; migrated to the Main profile
@@ -30,6 +30,20 @@ SCHEMA = [
          help='Higher = bars drop slower and smoother'),
     dict(key='transient', group='Keys', label='Punchiness', type='range', min=0, max=3, step=0.1, default=1.0,
          help='Extra height for hits and new notes over sustained sound'),
+    dict(key='style', group='Keys', label='Style', type='select',
+         options=[['bars', 'Bars'], ['mirror', 'Mirror'], ['rings', 'Rings'], ['waterfall', 'Waterfall']],
+         default='bars', help={'bars': 'Classic spectrum bars',
+                               'mirror': 'Bars grow up and down from the middle, like a waveform',
+                               'rings': 'Bass glows in the centre, treble towards the edges',
+                               'waterfall': 'The F-row is now; the sound flows down the keyboard'}),
+    dict(key='origin', group='Keys', label='Bars grow from', type='select', when={'style': ['bars']},
+         options=[['bottom', 'Bottom'], ['top', 'Top'], ['left', 'Left'], ['right', 'Right']], default='bottom',
+         help='Left and right turn the bars sideways: one band per row, bass on the bottom row'),
+    dict(key='f_lo', group='Keys', label='Lowest frequency (Hz)', type='range', min=20, max=1000, step=10,
+         default=40, trio='Frequency range (Hz)', part='low'),
+    dict(key='f_hi', group='Keys', label='Highest frequency (Hz)', type='range', min=2000, max=20000, step=500,
+         default=16000, trio='Frequency range (Hz)', part='high',
+         help='What the bars cover, from bass to treble. Narrow it to zoom in, e.g. 40-4000 for bass and vocals'),
     dict(key='headroom', group='Keys', label='Headroom (dB)', type='range', min=0, max=20, step=0.5, default=8.0,
          adv=True, help='How far above the song\'s average a bar must go to reach the top. Lower = fuller keyboard'),
     dict(key='range', group='Keys', label='Range (dB)', type='range', min=8, max=48, step=1, default=24, adv=True,
@@ -222,8 +236,12 @@ def start(cfg, status, lock, port=8765, open_browser=True, on_action=None):
             elif self.path == '/api/state':
                 with lock:
                     name = active()
-                    self._json({'settings': cfg, 'status': status, 'schema': SCHEMA,
+                    self._json({'settings': cfg, 'status': {k: v for k, v in status.items() if k != 'leds'},
+                                'schema': SCHEMA, 'layout': layout.ROWS,
                                 'profiles': profiles(), 'profile': name, 'unsaved': cfg != _read(name)})
+            elif self.path == '/api/leds':                     # polled fast by the live keyboard: keep it small
+                leds = status.get('leds') if status.get('running') else None
+                self._json({'keys': leds.hex() if leds else ''})
             else:
                 self._json({'error': 'not found'}, 404)
 

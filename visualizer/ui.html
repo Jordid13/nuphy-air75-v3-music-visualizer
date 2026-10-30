@@ -59,6 +59,21 @@
   .offline { display: none; background: #3a1d1d; color: #ffc2c2; text-align: center; padding: 9px 16px; font-size: 13px; }
   .offline code { background: #0003; padding: 1px 5px; border-radius: 4px; }
 
+  /* live keyboard */
+  .board-wrap { max-width: 980px; margin: 0 auto; padding: 20px 20px 0; }
+  .board { display: flex; gap: 12px; padding: 14px; background: #0a0b0d; border: 1px solid var(--line);
+           border-radius: var(--radius); }
+  .keys { flex: 1; min-width: 0; display: grid; gap: 4px; }
+  .krow { display: flex; gap: 4px; height: clamp(14px, 4.4vw, 40px); }
+  .key { flex: var(--w) 1 0; min-width: 0; background: #1b1d21; border-radius: 4px;
+         box-shadow: inset 0 -2px 0 #0006; transition: background .04s linear; }
+  .strip { flex: none; width: 6px; border-radius: 3px; background: #1b1d21; position: relative; overflow: hidden; }
+  .strip::after { content: ""; position: absolute; inset: 0; opacity: var(--b, 0); background: var(--c); }
+  .strip.flow::after { background: linear-gradient(to bottom, transparent, var(--c), transparent) 0 0 / 100% 200%;
+                       animation: flow var(--t, 2s) linear infinite; }
+  @keyframes flow { to { background-position: 0 200%; } }
+  @media (prefers-reduced-motion: reduce) { .strip.flow::after { animation: none; background: var(--c); } }
+
   /* sections */
   main { max-width: 980px; margin: 0 auto; padding: 20px; display: grid; gap: 16px;
          grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr)); align-items: start; }
@@ -120,6 +135,9 @@
     .group.right { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
     .plabel { display: none; }
     main { padding: 16px; }
+    .board-wrap { padding: 16px 16px 0; }
+    .board { padding: 10px; gap: 8px; }
+    .keys, .krow { gap: 3px; }
     footer { padding: 0 16px 24px; }
   }
 </style>
@@ -148,6 +166,11 @@
   </div>
   <div class="offline" id="offline">The visualizer isn't running. Start <code>python spectrum.py</code>, then reload this page.</div>
 </header>
+<div class="board-wrap">
+  <div class="board" role="img" aria-label="Live view of the keyboard lighting">
+    <div class="strip" id="strip-l"></div><div class="keys" id="keys"></div><div class="strip" id="strip-r"></div>
+  </div>
+</div>
 <main id="main"></main>
 <footer>
   <span>Changes apply instantly · <b>Save</b> keeps them for next time ·
@@ -216,7 +239,8 @@ function control(s) {
     inp.addEventListener('input', () => { if (!s.saves) send(s.key, rgb(inp.value)); });
     inp.addEventListener('change', () => send(s.key, rgb(inp.value), true));
   }
-  if (s.help) row.insertAdjacentHTML('beforeend', `<div class="help">${s.help}</div>`);
+  const help = typeof s.help === 'object' ? s.help[v] : s.help;    // per-option help for selects
+  if (help) row.insertAdjacentHTML('beforeend', `<div class="help">${help}</div>`);
   return row;
 }
 
@@ -288,6 +312,41 @@ function render() {
   window.scrollTo(0, scroll);
 }
 
+// live keyboard: keys are the colours actually sent; the strips run the keyboard's own effect, drawn from its settings
+let keyEls = [], lastLeds = null;
+function buildBoard(rows) {
+  $('#keys').innerHTML = rows.map((r) =>
+    `<div class="krow">${r.map((w) => `<div class="key" style="--w:${w}"></div>`).join('')}</div>`).join('');
+  keyEls = [...document.querySelectorAll('#keys .key')];
+}
+// LEDs look brighter than the same value on screen; a square-root curve gets closer to what you see
+const screen = (h) => '#' + [0, 2, 4].map((i) =>
+  Math.round(255 * Math.sqrt(parseInt(h.slice(i, i + 2), 16) / 255)).toString(16).padStart(2, '0')).join('');
+function showKeys(leds) {
+  if (leds === lastLeds) return;
+  lastLeds = leds;
+  keyEls.forEach((el, i) => {
+    const c = leds.slice(6 * i, 6 * i + 6);
+    const on = c.length === 6 && c !== '000000';
+    el.style.background = on ? screen(c) : '';
+    el.style.boxShadow = on ? `0 0 12px ${screen(c)}55` : '';
+  });
+}
+function showStrips(look) {           // look: side bytes [effect, brightness, speed, isRGB, 0, R, G, B], or null
+  for (const el of [$('#strip-l'), $('#strip-r')]) {
+    el.className = 'strip' + (look && look[0] === 0 ? ' flow' : '');
+    el.style.setProperty('--b', look ? look[1] / 100 : 0);
+    if (look) el.style.setProperty('--c', hex(look.slice(5, 8)));
+    if (look) el.style.setProperty('--t', (1.6 + look[2] * 1.4 / 3) + 's');   // measured: speed 0 = 1.6 s, 3 = 3 s
+  }
+}
+async function pollLeds() {
+  if (keyEls.length && !document.hidden) {
+    try { showKeys(running ? (await api('/api/leds')).keys : ''); } catch (_) {}
+  }
+  setTimeout(pollLeds, 50);
+}
+
 function showStatus(s) {
   running = !!s.running;
   const run = $('#b-run');
@@ -295,6 +354,7 @@ function showStatus(s) {
   run.classList.toggle('primary', !running);
   run.title = running ? 'Stop and give the keyboard back (your lighting is restored)' : 'Take over the keyboard lighting';
   $('#dot').className = 'dot' + (running ? (s.flashing ? ' kick' : ' on') : '');
+  showStrips(running ? s.look : null);
   if (!running) {
     $('#status').innerHTML = 'Stopped · your normal lighting is on';
   } else if (!s.section) {
@@ -321,7 +381,9 @@ async function poll() {
     const st = await api('/api/state');
     $('#offline').style.display = 'none';
     $('#b-run').disabled = false;
-    if (!schema) { schema = st.schema; settings = st.settings; render(); showProfiles(st.profiles, st.profile); }
+    if (!schema) {
+      schema = st.schema; settings = st.settings; render(); showProfiles(st.profiles, st.profile); buildBoard(st.layout);
+    }
     // settings changed elsewhere (another tab, a profile load): follow them, unless the user is mid-edit
     const a = document.activeElement;
     const editing = a && ['INPUT', 'SELECT'].includes(a.tagName) && a.id !== 'profile';
@@ -425,6 +487,7 @@ $('#b-quit').onclick = async () => {
 
 poll();
 setInterval(poll, 250);
+pollLeds();
 </script>
 </body>
 </html>

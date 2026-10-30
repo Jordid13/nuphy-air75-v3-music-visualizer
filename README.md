@@ -18,28 +18,46 @@
 > - Wrote all of the code: the driver and its safety guards, the audio analysis, the settings page,
 >   the macOS port, and these docs
 > - Some of its experiments locked or crashed the keyboard and needed a factory reset (see the list below)
-> - Tested the macOS port on a Mac (2026-10-30) and fixed what broke; see [macOS](#macos)
+> - Tested the macOS port on a Mac (2026-10-30), fixed what broke, and replaced the BlackHole routing
+>   with a system-audio tap; see [macOS](#macos)
 
 > [!WARNING]
 > Unofficial and not affiliated with NuPhy. This tool writes to your keyboard over an undocumented
 > protocol, so use it at your own risk.
 
 Turns a NuPhy Air75 V3 (USB `19F5:1028`, firmware 1.0.23.6) into a music visualizer for whatever your
-computer is playing. It talks to the keyboard over its reverse-engineered config protocol. Runs on
-Windows and macOS.
+computer is playing. It talks to the keyboard over its reverse-engineered config protocol.
 
-- **Keys:** a 16-band spectrum across the columns, with a flash on kicks. The kick threshold adapts to
-  each song (about one flash per beat).
+- **Keys:** a 16-band spectrum with a flash on kicks. The kick threshold adapts to each song (about one
+  flash per beat). Four styles:
+  - **Bars:** classic bars, growing from the bottom, top, left or right.
+  - **Mirror:** bars grow up and down from the middle rows.
+  - **Rings:** bass glows in the centre, treble towards the edges.
+  - **Waterfall:** a scrolling spectrogram; the F-row is now.
+
+  The frequency range the bars cover is adjustable (default 40–16,000 Hz). The keys go dark in silence.
 - **Side strips:** the keyboard's built-in *flowing* effect. Its brightness and speed follow the song's
   sections (calm / medium / hype, ranked against the song's last minute).
 
+## Support
+
+| | Audio capture | Status |
+|---|---|---|
+| **Windows** | WASAPI loopback of your output device | where it was developed; works |
+| **macOS 14.2+** | Core Audio system-audio tap; your output and volume keys unchanged | tested on macOS 27.0.1 |
+| **macOS before 14.2** | BlackHole virtual device + Multi-Output Device | should work: the same path (`--device BlackHole`) was tested on 27.0.1; volume keys don't |
+| **Linux** | soundcard's loopback (PulseAudio monitor) | untested |
+
+Keyboard: NuPhy Air75 V3 on firmware 1.0.23.6, over a USB cable. Bluetooth and 2.4 GHz are untested;
+other NuPhy models and firmware versions are unknown.
+
 ## Setup
 
-Python 3 and `pip install hidapi soundcard numpy`. Connect the keyboard by **USB cable** (Bluetooth and
-2.4 GHz are untested) and close NuPhy IO: it and the visualizer each set their own session key.
+Python 3 and `pip install hidapi soundcard numpy`. Connect the keyboard by **USB cable** and close
+NuPhy IO: it and the visualizer each set their own session key.
 
 - **Windows:** nothing else. The visualizer listens to your default output device (WASAPI loopback).
-- **macOS:** one-time audio routing; see [macOS](#macos).
+- **macOS:** the Xcode command line tools and one permission; see [macOS](#macos).
 
 ## Running it
 
@@ -58,12 +76,15 @@ next run restores your lighting when it stops.
 
 `http://localhost:8765` opens on start (local only; nothing leaves your computer). Changes apply live.
 
+- **Live keyboard:** at the top, the keys in the colours the visualizer is sending them right now. The
+  side strips run the keyboard's own effect, so they're drawn from its settings (colour, brightness, speed).
 - **Start / Stop:** Stop gives the keyboard back (your lighting restored, NuPhy IO usable) and Start
   takes it again. The page stays up until **Quit** (in the ⋯ menu) or Ctrl+C.
 - **Status:** the song's current section and tempo; the dot blinks on kicks. Detection details are in
   the footer line.
 - **Keys, Kick flash, Side strips:** the main settings, with fine-tuning under **Advanced**. Settings
-  only show when they apply (e.g. strip speeds only when the strips follow the song).
+  only show when they apply (e.g. strip speeds only when the strips follow the song). Keys has the style,
+  the direction bars grow from (Bars only), and the frequency range.
 - **Profiles:** settings live in named profiles (`data/profiles/*.json`). **Save** updates the current
   one and lights up when there are unsaved changes; **Save as new profile**, **Reset to defaults** and
   **Delete profile** are in the ⋯ menu. The last-used profile loads on the next start.
@@ -72,28 +93,37 @@ next run restores your lighting when it stops.
 
 ## macOS
 
-macOS can't record what's playing directly, so you route the audio through the free virtual device
-BlackHole once:
+On macOS 14.2 and later the visualizer records the system audio directly with a Core Audio tap. Your
+output device and its volume keys stay exactly as they are; no virtual audio device or routing needed.
+
+1. `python3 -m pip install hidapi soundcard numpy`, and the Xcode command line tools
+   (`xcode-select --install`), which build the small tap helper (`visualizer/mac_tap.swift`) on the
+   first run, into `data/mac_tap`.
+2. **System Settings → Privacy & Security → Screen & System Audio Recording**: under
+   **System Audio Recording Only**, add your terminal app (Terminal, iTerm, Ghostty…) and turn it on.
+   Without it macOS gives the visualizer silence, with no error.
+3. `python3 spectrum.py`.
+
+- The visualizer hears the audio before your volume is applied, so muting doesn't make it go dark.
+  Its automatic gain doesn't depend on volume anyway.
+- The tap only starts once the Mac plays something, so the keys stay dark until then.
+- If the keyboard isn't found, try allowing **Input Monitoring** for your terminal too.
+
+**macOS before 14.2:** route the audio through the free virtual device BlackHole instead:
 
 1. `brew install blackhole-2ch`, then log out and back in.
 2. **Audio MIDI Setup** → `+` → **Create Multi-Output Device**. Tick your speakers or headphones
-   (list them first, so they're the clock source) **and** BlackHole 2ch, and enable drift correction for BlackHole.
+   (list them first, so they're the clock source) **and** BlackHole, and enable drift correction for BlackHole.
 3. **System Settings → Sound → Output**: choose the Multi-Output Device.
-4. `python3 -m pip install hidapi soundcard numpy`, then `python3 spectrum.py`.
+4. `python3 spectrum.py --device BlackHole`, and allow **Microphone** access for your terminal if asked.
 
-- The volume keys don't work on a Multi-Output Device. Set the volume in Audio MIDI Setup on the speaker
-  itself, or switch the output back to your speakers when you're not running the visualizer.
-  The visualizer's automatic gain doesn't depend on volume.
-- If macOS asks for **Microphone** permission for your terminal, allow it (that's how BlackHole is read).
-  If the keyboard isn't found, try allowing **Input Monitoring** for your terminal too.
-- `--device "name"` picks a different input (default: BlackHole).
-- BlackHole 16ch works too: the default matches any input whose name contains "BlackHole".
+The volume keys don't work on a Multi-Output Device; set the volume in Audio MIDI Setup or switch the output
+back when you're not running the visualizer. `--device` with part of any input's name works on 14.2+ too.
 
-**Tested on a Mac** (2026-10-30, Python 3.13, BlackHole 16ch, keyboard over USB): audio capture, the
-keyboard link (~175 key frames/s), the settings page and lighting restore all work.
-Fixed: `spectrum.py` and `tools/record_audio.py` crashed on start with `AttributeError: module 'soundcard'
-has no attribute 'SoundcardRuntimeWarning'`. That warning class only exists in soundcard's Windows backend,
-so it's now silenced only on Windows (in `visualizer/audio_source.py`).
+**Tested on a Mac** (2026-10-30, macOS 27.0.1, Python 3.13, keyboard over USB): system-audio tap with the
+output on a USB audio device (~165 key frames/s), the BlackHole fallback (~175 key frames/s), the settings
+page and lighting restore. Fixed along the way: a start-up crash on macOS (`soundcard.SoundcardRuntimeWarning`
+only exists on Windows, so it's now silenced only there).
 
 ## Files
 
@@ -102,7 +132,8 @@ so it's now silenced only on Windows (in `visualizer/audio_source.py`).
 | `spectrum.py` | the visualizer — run this |
 | `visualizer/nuphy.py` | protocol driver: session key, read/write, per-LED colours, safety guards |
 | `visualizer/layout.py` | key LED index → row / x position (verified on the keyboard) |
-| `visualizer/audio_source.py` | system-audio capture (Windows loopback / macOS input device) |
+| `visualizer/audio_source.py` | system-audio capture (Windows loopback / macOS tap or input device) |
+| `visualizer/mac_tap.swift` | macOS system-audio tap helper, built on first run |
 | `visualizer/ui_server.py`, `ui.html` | the settings page; the settings schema and limits are in `ui_server.py` |
 | `tools/record_audio.py` | record what the visualizer hears to a WAV in `data/`, for offline tuning |
 | `tools/dump_frame.py` | read the live per-LED colour frame (read-only) |
