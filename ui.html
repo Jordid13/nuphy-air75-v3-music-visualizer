@@ -173,6 +173,13 @@ async function poll() {
     const st = await api('/api/state');
     $('#offline').style.display = 'none';
     if (!schema) { schema = st.schema; settings = st.settings; render(); showProfiles(st.profiles, st.profile); }
+    // settings changed elsewhere (another tab, a profile load): follow them, unless the user is mid-edit
+    const editing = document.activeElement && ['INPUT', 'SELECT'].includes(document.activeElement.tagName)
+                    && document.activeElement.id !== 'profile';
+    if (!editing && !Object.keys(pending).length && JSON.stringify(st.settings) !== JSON.stringify(settings)) {
+      settings = st.settings; render();
+    }
+    if (st.profile !== current || st.profiles.length !== $('#profile').options.length) showProfiles(st.profiles, st.profile);
     const s = st.status;
     chip('#c-song', s.section || '–', s.section);
     chip('#c-strips', s.strips ? `${s.strips} · speed ${s.speed} · ${s.brightness}%` : '–', s.strips);
@@ -235,7 +242,11 @@ function toast(t, bad) {
   setTimeout(() => el.classList.remove('show'), bad ? 3000 : 1400);
 }
 $('#b-save').onclick = async () => { await flush(); await api('/api/save', {}); toast(`Saved to "${current}"`); };
-$('#b-defaults').onclick = async () => { settings = (await api('/api/defaults', {})).settings; render(); toast('Defaults restored (not saved yet)'); };
+$('#b-defaults').onclick = async () => {
+  if (!confirm(`Reset all sliders to the built-in defaults?\n\nYour saved profile "${current}" is not changed unless you press Save afterwards. To get it back, pick it in the Profile list again.`)) return;
+  settings = (await api('/api/defaults', {})).settings; render();
+  toast(`Defaults loaded — "${current}" is unchanged until you press Save`);
+};
 $('#b-stop').onclick = async () => {
   if (!confirm('Stop the visualizer and restore your normal lighting? (Unsaved settings are lost.)')) return;
   await flush();
