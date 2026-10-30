@@ -11,7 +11,8 @@ python spectrum.py --stats    # plus link/audio timing every 2 s
 
 **Settings page** (`http://localhost:8765`, local only): every tunable — bar height/feel, kick flash
 (colour, length, when it may flash, sensitivity), side-strip mode/colour/brightness/speed per section —
-applies live. **Save** writes `settings.json`, loaded on the next start. Strip settings write the
+applies live. Settings live in named **profiles** (`profiles/*.json`, e.g. `Main`): Save updates the
+current one, Save as… makes a new one, and the last-used profile loads on the next start. Strip settings write the
 keyboard's flash memory, so they apply when a slider is released; strip speed is limited to 0–3.
 
 - **Keys:** 16-band spectrum across the columns (custom per-LED mode), red, with a white flash on kicks
