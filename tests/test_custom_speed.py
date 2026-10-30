@@ -3,6 +3,9 @@
 2. do non-contiguous records in one packet work?
 3. how fast can we push packets, with and without waiting for each ack?"""
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 from nuphy import Keyboard, BANK_LIGHT, MAIN_CUSTOM, CMD_SIGNAL, frame
 from dump_frame import read_frame
 

@@ -1,6 +1,9 @@
 """Send the keyboard's LED output report (Num=1, Caps=2, Scroll=4) directly, without touching
 Windows' lock state, and watch the side strips."""
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 import hid
 from nuphy import Keyboard, VID, PID
 

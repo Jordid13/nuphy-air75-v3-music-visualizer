@@ -1,5 +1,8 @@
 """Per-LED test: Esc blue, then sweep indices past the key LEDs to find the side strips."""
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 from nuphy import Keyboard, BANK_LIGHT, MAIN_CUSTOM
 
 kb = Keyboard()

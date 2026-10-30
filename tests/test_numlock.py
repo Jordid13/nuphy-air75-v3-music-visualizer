@@ -1,6 +1,9 @@
 """Does Num Lock (host lock state -> LED report) light anything? Toggles it 4 times, watches every LED."""
 import ctypes
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 from nuphy import Keyboard
 from dump_frame import read_frame
 

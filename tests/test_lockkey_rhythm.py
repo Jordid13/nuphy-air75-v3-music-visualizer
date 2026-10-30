@@ -2,6 +2,9 @@
 Toggles Scroll Lock an even number of times while watching the side LED frame. Read-only on the keyboard."""
 import ctypes
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 from nuphy import Keyboard
 
 VK_SCROLL, KEYUP = 0x91, 0x0002

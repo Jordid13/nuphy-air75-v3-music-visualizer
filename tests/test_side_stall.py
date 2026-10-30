@@ -1,5 +1,8 @@
 """How long do key packets (D8) stall around a side write (D6)? Sequential, one handle."""
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 from nuphy import Keyboard, BANK_LIGHT, SIDE, MAIN_CUSTOM, CMD_SIGNAL
 
 kb = Keyboard()

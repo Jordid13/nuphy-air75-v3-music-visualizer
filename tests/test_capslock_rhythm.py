@@ -1,7 +1,10 @@
-﻿"""Does a host-side lock-key toggle (which sends an LED output report to the keyboard) trigger rhythm?
+"""Does a host-side lock-key toggle (which sends an LED output report to the keyboard) trigger rhythm?
 Toggles Scroll Lock an even number of times while watching the side LED frame. Read-only on the keyboard."""
 import ctypes
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 from nuphy import Keyboard
 
 VK_SCROLL, KEYUP = 0x14, 0x0002

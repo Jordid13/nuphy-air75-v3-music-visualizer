@@ -1,6 +1,9 @@
 """Deliberate test of side speed 0 (fastest), bypassing the driver's guard. Checks: does the keyboard
 disconnect/reboot, does 0 stick, how fast does it look, and is the speed still changeable afterwards."""
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 import numpy as np
 import hid
 from nuphy import Keyboard, BANK_LIGHT, SIDE, VID, PID, IFACE

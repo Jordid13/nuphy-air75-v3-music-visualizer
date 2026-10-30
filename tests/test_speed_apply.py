@@ -1,6 +1,9 @@
 """Does a speed change become VISIBLE when written as part of the full side block (like the visualizer)
 versus written alone? Measures the flowing cycle from the live frame after each kind of write."""
 import time
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 import numpy as np
 from nuphy import Keyboard, BANK_LIGHT, SIDE
 

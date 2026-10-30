@@ -1,4 +1,7 @@
 """Visual check of layout.py: each row its own colour, and a white column at x ~ 8u."""
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
 from nuphy import Keyboard, BANK_LIGHT, MAIN_CUSTOM
 from layout import KEYS
 
