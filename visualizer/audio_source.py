@@ -6,6 +6,7 @@ by default BlackHole (https://existential.audio/blackhole/), fed by a Multi-Outp
 that sends sound to both your speakers and BlackHole. See README "macOS".
 """
 import sys
+import warnings
 
 import soundcard as sc
 
@@ -22,6 +23,8 @@ Or pass --device with part of another input's name. Inputs found: {inputs}"""
 
 def open_capture(device=None):
     """(display name, soundcard microphone) for the system audio."""
+    if hasattr(sc, 'SoundcardRuntimeWarning'):  # only the Windows backend has it
+        warnings.filterwarnings('ignore', category=sc.SoundcardRuntimeWarning)  # "data discontinuity"
     if IS_MAC:
         name = device or MAC_DEFAULT_INPUT
         try:

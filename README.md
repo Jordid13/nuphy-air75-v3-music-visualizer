@@ -18,7 +18,7 @@
 > - Wrote all of the code: the driver and its safety guards, the audio analysis, the settings page,
 >   the macOS port, and these docs
 > - Some of its experiments locked or crashed the keyboard and needed a factory reset (see the list below)
-> - The macOS port hasn't been tested on a Mac yet
+> - Tested the macOS port on a Mac (2026-10-30) and fixed what broke; see [macOS](#macos)
 
 > [!WARNING]
 > Unofficial and not affiliated with NuPhy. This tool writes to your keyboard over an undocumented
@@ -87,6 +87,13 @@ BlackHole once:
 - If macOS asks for **Microphone** permission for your terminal, allow it (that's how BlackHole is read).
   If the keyboard isn't found, try allowing **Input Monitoring** for your terminal too.
 - `--device "name"` picks a different input (default: BlackHole).
+- BlackHole 16ch works too: the default matches any input whose name contains "BlackHole".
+
+**Tested on a Mac** (2026-10-30, Python 3.13, BlackHole 16ch, keyboard over USB): audio capture, the
+keyboard link (~175 key frames/s), the settings page and lighting restore all work.
+Fixed: `spectrum.py` and `tools/record_audio.py` crashed on start with `AttributeError: module 'soundcard'
+has no attribute 'SoundcardRuntimeWarning'`. That warning class only exists in soundcard's Windows backend,
+so it's now silenced only on Windows (in `visualizer/audio_source.py`).
 
 ## Files
 

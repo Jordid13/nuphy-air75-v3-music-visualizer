@@ -15,10 +15,8 @@ import json
 import os
 import threading
 import time
-import warnings
 
 import numpy as np
-import soundcard as sc
 
 from visualizer import DATA_DIR, ui_server
 from visualizer.audio_source import open_capture
@@ -354,7 +352,6 @@ def main():
         t_status = 0.0
 
         print(f'listening to {source} — Ctrl+C to stop')
-        warnings.filterwarnings('ignore', category=sc.SoundcardRuntimeWarning)
         try:
             with mic.recorder(samplerate=RATE, channels=2, blocksize=256) as rec:
                 t_end = time.perf_counter() + args.seconds if args.seconds else float('inf')

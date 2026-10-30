@@ -3,13 +3,11 @@ Doesn't touch the keyboard.   python tools/record_audio.py [seconds] [--device "
 import sys
 import time
 import wave
-import warnings
 
 import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)  # project root
 import numpy as np
-import soundcard as sc
 
 from visualizer.audio_source import open_capture
 
@@ -19,7 +17,6 @@ dev = sys.argv[sys.argv.index('--device') + 1] if '--device' in sys.argv else No
 source, mic = open_capture(dev)
 out = os.path.join(ROOT, 'data', f'capture_{time.strftime("%H%M%S")}.wav')
 
-warnings.filterwarnings('ignore', category=sc.SoundcardRuntimeWarning)
 print(f'recording {secs:.0f} s from {source} -> {out}')
 print('start the song now; the clock below is the time to give me for quiet/loud parts')
 chunks = []
