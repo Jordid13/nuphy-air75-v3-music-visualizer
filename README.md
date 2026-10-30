@@ -23,6 +23,25 @@ keyboard's flash memory, so they apply when a slider is released; strip speed is
 
 Requires `pip install hidapi soundcard numpy`. `python spectrum.py --help` lists the startup options.
 
+## macOS
+
+The keyboard side works the same. Audio is different: macOS can't record what's playing directly,
+so you route it through the free virtual device BlackHole once:
+
+1. `brew install blackhole-2ch`, then log out and back in.
+2. **Audio MIDI Setup** → `+` → **Create Multi-Output Device**. Tick your speakers or headphones
+   (list them first, so they're the clock source) **and** BlackHole 2ch, and enable drift correction for BlackHole.
+3. **System Settings → Sound → Output**: choose the Multi-Output Device.
+4. `python3 -m pip install hidapi soundcard numpy`, then `python3 spectrum.py`.
+
+- The volume keys don't work on a Multi-Output Device. Set the volume in Audio MIDI Setup on the speaker
+  itself, or switch the output back to your speakers when you're not running the visualizer.
+  The visualizer's automatic gain doesn't depend on volume.
+- If macOS asks for **Microphone** permission for your terminal, allow it (that's how BlackHole is read).
+  If the keyboard isn't found, try allowing **Input Monitoring** for your terminal too.
+- `--device "name"` picks a different input (default: BlackHole).
+- Use the keyboard over **USB cable**: the config channel is the USB interface (Bluetooth/2.4 GHz untested).
+
 ## Files
 
 | File | What |

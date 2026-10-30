@@ -2,14 +2,13 @@
 
 Keys: 16 frequency bands across the keyboard's columns (custom per-LED mode), white flash on kicks.
 Side strips: built-in flowing effect, brightness/speed follow the song's sections.
-Captures whatever the PC is playing (WASAPI loopback). Ctrl+C restores your lighting.
+Captures whatever the computer is playing (WASAPI loopback on Windows; BlackHole on macOS, see README). Ctrl+C restores your lighting.
 Close NuPhy IO first (it and this script each set their own session key).
 
   python spectrum.py                 # opens the settings page at http://localhost:8765
   python spectrum.py --no-ui         # no settings page (uses saved settings)
 """
 import argparse
-import ctypes
 import json
 import os
 import threading
@@ -20,6 +19,7 @@ import numpy as np
 import soundcard as sc
 
 import ui_server
+from audio_source import open_capture
 from nuphy import Keyboard, BANK_LIGHT, SIDE, MAIN_CUSTOM
 from layout import KEYS, N_ROWS, WIDTH
 
@@ -44,10 +44,11 @@ SECTION_RANK = {'silent': 0, 'calm': 1, 'medium': 2, 'hype': 3}
 
 def parse_args():
     p = argparse.ArgumentParser(description='Most settings live on the settings page; these are startup options.')
-    p.add_argument('--device', help='part of the output device name (default: system default)')
-    p.add_argument('--side', choices=('caps', 'flash'),
-                   help='special side-strip modes not on the settings page: caps = LEFT strip flashes on kicks '
-                        'by toggling Caps Lock (don\'t type); flash = brightness flashes (wears flash memory!)')
+    p.add_argument('--device', help='Windows: part of the output device name (default: system default); '
+                        'macOS: part of the input device name (default: BlackHole)')
+    p.add_argument('--side', choices=('flash',),
+                   help='special side-strip mode not on the settings page: flash = brightness flashes on kicks '
+                        '(wears flash memory!)')
     p.add_argument('--no-ui', action='store_true', help='don\'t open the settings page')
     p.add_argument('--port', type=int, default=8765)
     p.add_argument('--no-browser', action='store_true', help='serve the settings page but don\'t open it')
@@ -187,19 +188,6 @@ class SectionTracker:
         return self.candidate
 
 
-VK_CAPITAL = 0x14
-_user32 = ctypes.windll.user32
-
-
-def caps_is_on():
-    return bool(_user32.GetKeyState(VK_CAPITAL) & 1)
-
-
-def tap_caps():
-    _user32.keybd_event(VK_CAPITAL, 0x3A, 0, 0)
-    _user32.keybd_event(VK_CAPITAL, 0x3A, 0x0002, 0)
-
-
 def saved_lighting(kb):
     """The user's own lighting to restore on exit. If the keyboard is still in the visualizer's
     state (a previous run didn't restore), use the copy saved by that run instead."""
@@ -221,10 +209,8 @@ def main():
     status = {}
     lock = threading.Lock()
     stop = threading.Event()
-    flashing, capsing = args.side == 'flash', args.side == 'caps'
-    if capsing:
-        print('Caps mode: the left strip flashes by toggling Caps Lock — don\'t type while this runs.')
-        cfg['side_mode'] = 'off'
+    flashing = args.side == 'flash'
+    source, mic = open_capture(args.device)      # before touching the keyboard, so a missing device exits cleanly
     if flashing:
         print('WARNING: --side flash saves to the keyboard\'s flash memory on every flash (~2 writes per beat).\n'
               '         Fine for a quick look; avoid long sessions.')
@@ -232,9 +218,6 @@ def main():
 
     kb = Keyboard()
     saved = saved_lighting(kb)
-    caps_at_start = caps_is_on()
-    if capsing and caps_at_start:
-        tap_caps()                                       # start from Caps off so flashes are on/off
 
     def setup(kb, look):
         kb.write(BANK_LIGHT, 0, [MAIN_CUSTOM, 100])
@@ -297,10 +280,7 @@ def main():
             kb.write(BANK_LIGHT, SIDE, look)             # one flash save per change (rate-limited upstream)
             st['side'] += 1
             w['look'] = look
-        if capsing and (side > 0) != caps_is_on() and now - w['side_t'] > 0.03:
-            tap_caps()                                   # Windows sends the Caps light state to the keyboard
-            w['side'], w['side_t'] = side, time.perf_counter()
-        elif flashing and side != w['side'] and now - w['side_t'] > 0.03:
+        if flashing and side != w['side'] and now - w['side_t'] > 0.03:
             kb.write(BANK_LIGHT, SIDE + 1, [side])
             w['side'], w['side_t'] = side, time.perf_counter()
         changed = [(i, *c) for i, c in keys.items() if sent[i] != c]
@@ -356,9 +336,7 @@ def main():
     last_flash = -1.0
     t_status = 0.0
 
-    speaker = sc.get_speaker(args.device) if args.device else sc.default_speaker()
-    mic = sc.get_microphone(id=str(speaker.name), include_loopback=True)
-    print(f'listening to {speaker.name} — Ctrl+C to stop')
+    print(f'listening to {source} — Ctrl+C to stop')
     warnings.filterwarnings('ignore', category=sc.SoundcardRuntimeWarning)
     try:
         with mic.recorder(samplerate=RATE, channels=2, blocksize=256) as rec:
@@ -512,8 +490,6 @@ def main():
     finally:
         stop.set()
         wt.join(1.0)
-        if capsing and caps_is_on() != caps_at_start:
-            tap_caps()
         for attempt in range(2):
             try:
                 if attempt:

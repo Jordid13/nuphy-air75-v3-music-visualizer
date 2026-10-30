@@ -8,15 +8,16 @@ import warnings
 import numpy as np
 import soundcard as sc
 
+from audio_source import open_capture
+
 RATE = 48000
 secs = float(sys.argv[1]) if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else 90
 dev = sys.argv[sys.argv.index('--device') + 1] if '--device' in sys.argv else None
-speaker = sc.get_speaker(dev) if dev else sc.default_speaker()
-mic = sc.get_microphone(id=str(speaker.name), include_loopback=True)
+source, mic = open_capture(dev)
 out = f'capture_{time.strftime("%H%M%S")}.wav'
 
 warnings.filterwarnings('ignore', category=sc.SoundcardRuntimeWarning)
-print(f'recording {secs:.0f} s from {speaker.name} -> {out}')
+print(f'recording {secs:.0f} s from {source} -> {out}')
 print('start the song now; the clock below is the time to give me for quiet/loud parts')
 chunks = []
 with mic.recorder(samplerate=RATE, channels=2) as rec:
