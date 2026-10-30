@@ -1,23 +1,28 @@
 # NuPhy Air75 V3 music visualizer
 
-> **Disclaimer: who did what.** This tool was built in conversation between me (the repo owner) and
-> Claude, Anthropic's AI model, running in Claude Code.
+> [!NOTE]
+> **Who built what.** Made by me (the repo owner) together with Claude, Anthropic's AI model, in Claude Code.
 >
-> - **Me:** I came up with the idea and set the goals, and I was the eyes and hands on the actual
->   keyboard. I captured NuPhy IO's USB traffic in the browser so the protocol could be decoded, and I ran
->   every hardware experiment and reported what the lights did. I updated the firmware and factory-reset
->   the keyboard each time an experiment locked or scrambled it. I verified the key layout. Several of the
->   approaches came from me: driving the strips through the keyboard's built-in effects and their
->   parameters, flashing on beats, and making the visuals adapt to each song. I tuned it all by
->   watching it play music, and I decided what to keep.
-> - **Claude:** it decoded the protocol from those captures and the NuPhy IO web app's code, designed the
->   experiments, and wrote all of the code. That covers the driver and its safety guards, the audio
->   analysis (spectrum, kick and section detection), the settings page, the macOS port and these docs.
->   Some of its experiments locked or crashed the keyboard and needed a factory reset (see the list
->   below). The macOS port hasn't been tested on a Mac yet.
+> **Me**
+> - Came up with the idea and set the goals
+> - Captured NuPhy IO's USB traffic so the protocol could be decoded
+> - Ran every hardware test and reported what the lights did
+> - Updated the firmware and factory-reset the keyboard whenever a test broke it
+> - Verified the key layout
+> - Ideas: use the strips' built-in effects, flash on the beat, adapt to each song
+> - Tuned it by watching it play music and decided what to keep
 >
-> Unofficial and not affiliated with NuPhy. It writes to your keyboard over an undocumented protocol:
-> use at your own risk.
+> **Claude**
+> - Decoded the protocol from my captures and the NuPhy IO web app's code
+> - Designed the experiments
+> - Wrote all of the code: the driver and its safety guards, the audio analysis, the settings page,
+>   the macOS port, and these docs
+> - Some of its experiments locked or crashed the keyboard and needed a factory reset (see the list below)
+> - The macOS port hasn't been tested on a Mac yet
+
+> [!WARNING]
+> Unofficial and not affiliated with NuPhy. This tool writes to your keyboard over an undocumented
+> protocol, so use it at your own risk.
 
 Turns a NuPhy Air75 V3 (USB `19F5:1028`, firmware 1.0.23.6) into a music visualizer for whatever your
 computer is playing. It talks to the keyboard over its reverse-engineered config protocol. Runs on
