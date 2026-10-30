@@ -1,6 +1,6 @@
 """Read-only recorder: while you type in rhythm mode, log every change in the side LED frame
 and the readable state blocks, to find the LED order and anything that tracks the rhythm level.
-Writes rhythm_log.txt."""
+Writes data/rhythm_log.txt."""
 import time
 import os
 import sys
@@ -55,4 +55,4 @@ finally:
     kb.close()
     with open(os.path.join(ROOT, 'data', 'rhythm_log.txt'), 'w') as f:
         f.write('\n'.join(lines))
-    print(f'\nDone - {len(lines)} lines saved to rhythm_log.txt. Tell Claude.')
+    print(f'\nDone - {len(lines)} lines saved to data/rhythm_log.txt. Tell Claude.')

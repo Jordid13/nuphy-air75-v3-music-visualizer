@@ -1,4 +1,4 @@
-"""Visual check of layout.py: each row its own colour, and a white column at x ~ 8u."""
+"""Visual check of visualizer/layout.py: each row its own colour, and a white column at x ~ 8u."""
 import os
 import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,4 +25,4 @@ try:
 finally:
     kb.write(BANK_LIGHT, 0, main0)
     kb.close()
-    print('saved layout_answers.txt, keyboard lighting restored')
+    print('saved data/layout_answers.txt, keyboard lighting restored')

@@ -1,5 +1,6 @@
 """Live settings for spectrum.py: the settings schema, load/save, and a tiny local web UI
-(http://localhost:8765, served by Python's standard library, nothing leaves the PC)."""
+(http://localhost:8765, served by Python's standard library, nothing leaves the computer).
+Profiles are stored in data/profiles/.."""
 import json
 import os
 import re

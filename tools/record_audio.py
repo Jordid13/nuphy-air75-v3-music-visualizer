@@ -1,5 +1,5 @@
-"""Record what the visualizer hears (system audio loopback) to a WAV file, for tuning detection offline.
-Doesn't touch the keyboard.   python record_audio.py [seconds] [--device "USB Audio"]"""
+"""Record what the visualizer hears (system audio) to data/capture_HHMMSS.wav, for tuning detection offline.
+Doesn't touch the keyboard.   python tools/record_audio.py [seconds] [--device "USB Audio"]"""
 import sys
 import time
 import wave

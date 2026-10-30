@@ -2,11 +2,13 @@
 
 Keys: 16 frequency bands across the keyboard's columns (custom per-LED mode), white flash on kicks.
 Side strips: built-in flowing effect, brightness/speed follow the song's sections.
-Captures whatever the computer is playing (WASAPI loopback on Windows; BlackHole on macOS, see README). Ctrl+C restores your lighting.
+Captures whatever the computer is playing (WASAPI loopback on Windows; BlackHole on macOS, see README).
 Close NuPhy IO first (it and this script each set their own session key).
 
   python spectrum.py                 # opens the settings page at http://localhost:8765
   python spectrum.py --no-ui         # no settings page (uses saved settings)
+
+Stop on the page or Ctrl+C restores your lighting; the page's Start takes the keyboard again.
 """
 import argparse
 import json

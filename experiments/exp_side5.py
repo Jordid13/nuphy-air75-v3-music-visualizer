@@ -1,6 +1,6 @@
 """Experiment: put the side light in effect 5 (LOCKS it — factory reset afterwards),
 then see whether per-LED colors or the side color reach the strips in that mode.
-Asks what you see after each step and saves the answers to exp_side5_answers.json."""
+Asks what you see after each step and saves the answers to data/exp_side5_answers.json."""
 import json
 import time
 import os

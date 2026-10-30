@@ -1,33 +1,55 @@
 # NuPhy Air75 V3 music visualizer
 
-Drives the lighting of a NuPhy Air75 V3 (USB `19F5:1028`, firmware 1.0.23.6) from whatever the PC is
-playing, over the keyboard's reverse-engineered config protocol.
+Turns a NuPhy Air75 V3 (USB `19F5:1028`, firmware 1.0.23.6) into a music visualizer for whatever your
+computer is playing. It talks to the keyboard over its reverse-engineered config protocol. Runs on
+Windows and macOS.
+
+- **Keys:** a 16-band spectrum across the columns, with a flash on kicks. The kick threshold adapts to
+  each song (about one flash per beat).
+- **Side strips:** the keyboard's built-in *flowing* effect. Its brightness and speed follow the song's
+  sections (calm / medium / hype, ranked against the song's last minute).
+
+## Setup
+
+Python 3 and `pip install hidapi soundcard numpy`. Connect the keyboard by **USB cable** (Bluetooth and
+2.4 GHz are untested) and close NuPhy IO: it and the visualizer each set their own session key.
+
+- **Windows:** nothing else. The visualizer listens to your default output device (WASAPI loopback).
+- **macOS:** one-time audio routing; see [macOS](#macos).
+
+## Running it
 
 ```
-python spectrum.py            # close NuPhy IO first; opens the settings page; Ctrl+C restores your lighting
-python spectrum.py --no-ui    # no settings page (uses saved settings)
-python spectrum.py --stats    # plus link/audio timing every 2 s
+python spectrum.py                 # opens the settings page; Ctrl+C quits and restores your lighting
+python spectrum.py --no-ui         # no settings page (uses the last-used profile)
+python spectrum.py --device "USB"  # a different audio device (part of its name)
+python spectrum.py --stats         # print link/audio timing every 2 s
+python spectrum.py --help          # all startup options
 ```
 
-**Settings page** (`http://localhost:8765`, local only): every tunable — bar height/feel, kick flash
-(colour, length, when it may flash, sensitivity), side-strip mode/colour/brightness/speed per section —
-applies live. **Stop** gives the keyboard back (your lighting restored, NuPhy IO usable) and **Start**
-takes it again; the page stays up until **Quit** or Ctrl+C. Settings live in named **profiles** (`data/profiles/*.json`, e.g. `Main`): Save updates the
-current one, Save as… makes a new one, and the last-used profile loads on the next start. Strip settings write the
-keyboard's flash memory, so they apply when a slider is released; strip speed is limited to 0–3.
+Your own lighting is restored whenever the visualizer stops. If a run ends without restoring it, the
+next run restores your lighting when it stops.
 
-- **Keys:** 16-band spectrum across the columns (custom per-LED mode), red, with a white flash on kicks
-  in loud parts. The kick threshold adapts to each song (~1 flash per beat).
-- **Side strips:** built-in *flowing* effect, always red and on. Brightness and speed follow the song's
-  sections (calm / medium / hype, ranked against the song's last minute). Each change is one settings
-  save, so they are rate-limited.
+## Settings page
 
-Requires `pip install hidapi soundcard numpy`. `python spectrum.py --help` lists the startup options.
+`http://localhost:8765` opens on start (local only; nothing leaves your computer). Changes apply live.
+
+- **Start / Stop:** Stop gives the keyboard back (your lighting restored, NuPhy IO usable) and Start
+  takes it again. The page stays up until **Quit** (in the ⋯ menu) or Ctrl+C.
+- **Status:** the song's current section and tempo; the dot blinks on kicks. Detection details are in
+  the footer line.
+- **Keys, Kick flash, Side strips:** the main settings, with fine-tuning under **Advanced**. Settings
+  only show when they apply (e.g. strip speeds only when the strips follow the song).
+- **Profiles:** settings live in named profiles (`data/profiles/*.json`). **Save** updates the current
+  one and lights up when there are unsaved changes; **Save as new profile**, **Reset to defaults** and
+  **Delete profile** are in the ⋯ menu. The last-used profile loads on the next start.
+- Settings marked with an orange dot are stored in the keyboard's flash memory, so they apply when you
+  let go of the slider. Strip speed is limited to 0–3 (4 locks the keyboard's speed setting).
 
 ## macOS
 
-The keyboard side works the same. Audio is different: macOS can't record what's playing directly,
-so you route it through the free virtual device BlackHole once:
+macOS can't record what's playing directly, so you route the audio through the free virtual device
+BlackHole once:
 
 1. `brew install blackhole-2ch`, then log out and back in.
 2. **Audio MIDI Setup** → `+` → **Create Multi-Output Device**. Tick your speakers or headphones
@@ -41,19 +63,22 @@ so you route it through the free virtual device BlackHole once:
 - If macOS asks for **Microphone** permission for your terminal, allow it (that's how BlackHole is read).
   If the keyboard isn't found, try allowing **Input Monitoring** for your terminal too.
 - `--device "name"` picks a different input (default: BlackHole).
-- Use the keyboard over **USB cable**: the config channel is the USB interface (Bluetooth/2.4 GHz untested).
 
 ## Files
 
 | Path | What |
 |---|---|
 | `spectrum.py` | the visualizer — run this |
-| `visualizer/` | its modules: `nuphy.py` protocol driver (session key, read/write, per-LED colours, safety guards), `layout.py` key LED positions (verified on the keyboard), `audio_source.py` system-audio capture, `ui_server.py` + `ui.html` settings page (schema + limits in `ui_server.py`) |
-| `tools/` | `record_audio.py` records what the visualizer hears to a WAV (for offline tuning); `dump_frame.py` reads the live per-LED colour frame (read-only) |
-| `experiments/`, `tests/` | scripts from reverse-engineering the keyboard; see the warnings below before running any |
-| `data/` | per-machine files, not in git: profiles, your saved lighting, crash log, recordings |
+| `visualizer/nuphy.py` | protocol driver: session key, read/write, per-LED colours, safety guards |
+| `visualizer/layout.py` | key LED index → row / x position (verified on the keyboard) |
+| `visualizer/audio_source.py` | system-audio capture (Windows loopback / macOS input device) |
+| `visualizer/ui_server.py`, `ui.html` | the settings page; the settings schema and limits are in `ui_server.py` |
+| `tools/record_audio.py` | record what the visualizer hears to a WAV in `data/`, for offline tuning |
+| `tools/dump_frame.py` | read the live per-LED colour frame (read-only) |
+| `experiments/`, `tests/` | one-off hardware scripts from reverse-engineering the keyboard — not automated tests. Read the warnings below before running any |
+| `data/` | per-machine files, not in git: profiles, your saved lighting, crash log, recordings, experiment output |
 
-Run the scripts from anywhere, e.g. `python tools/record_audio.py 60`.
+Scripts in the subfolders run from any working folder, e.g. `python tools/record_audio.py 60`.
 
 ## Protocol summary
 
@@ -78,8 +103,8 @@ Payload `[len][addr lo][addr hi][bank][data…]`.
 - Streaming D6 writes (e.g. `experiments/beat_side.py`, `--side flash`) → flash-memory wear (**permanent**) and key stalls.
 - Never send `0xF1` RestoreFactory or `0xEF` SetIapMode (bootloader).
 
-Experiment scripts that deliberately do some of the above: `experiments/exp_side5.py`, `tests/test_numlock.py`,
-`tests/test_speed0.py`, `experiments/measure_breathe.py`, `experiments/beat_side.py`.
+Scripts that deliberately do some of the above: `experiments/exp_side5.py`, `experiments/measure_breathe.py`,
+`experiments/beat_side.py`, `tests/test_numlock.py`, `tests/test_speed0.py`.
 
 Known issue: the keyboard occasionally drops off USB for unknown reasons; `spectrum.py` reconnects by
 itself and logs the last packets to `data/crash_log.txt`.
