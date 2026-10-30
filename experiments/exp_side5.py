@@ -3,9 +3,13 @@ then see whether per-LED colors or the side color reach the strips in that mode.
 Asks what you see after each step and saves the answers to exp_side5_answers.json."""
 import json
 import time
-from nuphy import Keyboard, BANK_LIGHT, SIDE
+import os
+import sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE
 
-OUT = 'exp_side5_answers.json'
+OUT = os.path.join(ROOT, 'data', 'exp_side5_answers.json')
 answers = {}
 
 

@@ -3,8 +3,8 @@ import subprocess
 import sys
 import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
-from nuphy import Keyboard, BANK_LIGHT, SIDE
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE
 
 kb = Keyboard()
 kb.write(BANK_LIGHT, 0, bytes.fromhex('06 32 02 00 01 00 00 05 80'))

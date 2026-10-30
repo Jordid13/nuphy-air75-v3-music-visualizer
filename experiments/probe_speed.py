@@ -1,7 +1,11 @@
 """After a factory reset: change the side flowing speed back and forth using only 1-3, reading it back
 each time. If speeds 1-3 are safe, every write sticks and the speed is still changeable at the end."""
 import time
-from nuphy import Keyboard, BANK_LIGHT, SIDE
+import os
+import sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE
 
 SEQUENCE = [3, 2, 1, 2, 3, 1, 3, 2, 1, 2]
 

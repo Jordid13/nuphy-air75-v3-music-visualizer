@@ -1,9 +1,10 @@
 """Visual check of layout.py: each row its own colour, and a white column at x ~ 8u."""
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
-from nuphy import Keyboard, BANK_LIGHT, MAIN_CUSTOM
-from layout import KEYS
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard, BANK_LIGHT, MAIN_CUSTOM
+from visualizer.layout import KEYS
 
 COLORS = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (0, 255, 255), (255, 0, 255)]
 
@@ -19,7 +20,7 @@ try:
     kb.set_leds([(i, 255, 255, 255) for i, r, x in KEYS if abs(x - 8) < 0.6])
     b = input('\nNow only a few keys should be white, forming a rough vertical column in the middle '
               '(around 7 / U / J / M / space).\nWhich keys are lit?\n> ')
-    with open('layout_answers.txt', 'w', encoding='utf-8') as f:
+    with open(os.path.join(ROOT, 'data', 'layout_answers.txt'), 'w', encoding='utf-8') as f:
         f.write(f'rows: {a}\ncolumn: {b}\n')
 finally:
     kb.write(BANK_LIGHT, 0, main0)

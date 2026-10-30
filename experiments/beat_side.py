@@ -15,10 +15,14 @@ import threading
 import time
 import warnings
 
+import os
+import sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
 import numpy as np
 import soundcard as sc
 
-from nuphy import Keyboard, BANK_LIGHT, SIDE
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE
 
 RATE, CHUNK = 48000, 1024            # ~21 ms per chunk
 BASS = (40, 160)                     # Hz band for kick/bass

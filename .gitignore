@@ -1,12 +1,5 @@
 __pycache__/
 *.pyc
 
-# run-time / per-machine files
-crash_log.txt
-saved_lighting.json
-rhythm_log.txt
-*_answers.json
-*_answers.txt
-capture_*.wav
-settings.json
-profiles/
+# run-time / per-machine files: profiles, saved lighting, logs, recordings
+data/

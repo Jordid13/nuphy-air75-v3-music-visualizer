@@ -7,9 +7,11 @@ import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from . import DATA_DIR
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-LEGACY_SETTINGS = os.path.join(HERE, 'settings.json')        # pre-profiles; migrated to the Main profile
-PROFILE_DIR = os.path.join(HERE, 'profiles')
+LEGACY_SETTINGS = os.path.join(DATA_DIR, 'settings.json')        # pre-profiles; migrated to the Main profile
+PROFILE_DIR = os.path.join(DATA_DIR, 'profiles')
 ACTIVE_FILE = os.path.join(PROFILE_DIR, '_active.txt')
 UI_FILE = os.path.join(HERE, 'ui.html')
 NAME_RE = re.compile(r'^[A-Za-z0-9 _-]{1,32}$')

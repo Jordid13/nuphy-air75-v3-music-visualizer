@@ -3,9 +3,10 @@ Windows' lock state, and watch the side strips."""
 import time
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
 import hid
-from nuphy import Keyboard, VID, PID
+from visualizer.nuphy import Keyboard, VID, PID
 
 
 def side_lit(kb):

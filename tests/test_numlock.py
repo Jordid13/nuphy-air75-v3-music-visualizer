@@ -3,9 +3,10 @@ import ctypes
 import time
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
-from nuphy import Keyboard
-from dump_frame import read_frame
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard
+from tools.dump_frame import read_frame
 
 user32 = ctypes.windll.user32
 VK_NUMLOCK = 0x90

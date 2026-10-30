@@ -5,16 +5,19 @@ import time
 import wave
 import warnings
 
+import os
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
 import numpy as np
 import soundcard as sc
 
-from audio_source import open_capture
+from visualizer.audio_source import open_capture
 
 RATE = 48000
 secs = float(sys.argv[1]) if len(sys.argv) > 1 and not sys.argv[1].startswith('--') else 90
 dev = sys.argv[sys.argv.index('--device') + 1] if '--device' in sys.argv else None
 source, mic = open_capture(dev)
-out = f'capture_{time.strftime("%H%M%S")}.wav'
+out = os.path.join(ROOT, 'data', f'capture_{time.strftime("%H%M%S")}.wav')
 
 warnings.filterwarnings('ignore', category=sc.SoundcardRuntimeWarning)
 print(f'recording {secs:.0f} s from {source} -> {out}')

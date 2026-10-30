@@ -4,8 +4,9 @@ import ctypes
 import time
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
-from nuphy import Keyboard
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard
 
 VK_SCROLL, KEYUP = 0x14, 0x0002
 user32 = ctypes.windll.user32

@@ -2,7 +2,11 @@
 and the readable state blocks, to find the LED order and anything that tracks the rhythm level.
 Writes rhythm_log.txt."""
 import time
-from nuphy import Keyboard, BANK_LIGHT
+import os
+import sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard, BANK_LIGHT
 
 CMD_KEY_LIGHT = 0xD2
 PHASES = [(5, 'IDLE - do not touch the keyboard'),
@@ -49,6 +53,6 @@ try:
             time.sleep(0.05)
 finally:
     kb.close()
-    with open('rhythm_log.txt', 'w') as f:
+    with open(os.path.join(ROOT, 'data', 'rhythm_log.txt'), 'w') as f:
         f.write('\n'.join(lines))
     print(f'\nDone - {len(lines)} lines saved to rhythm_log.txt. Tell Claude.')

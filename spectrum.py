@@ -18,18 +18,17 @@ import warnings
 import numpy as np
 import soundcard as sc
 
-import ui_server
-from audio_source import open_capture
-from nuphy import Keyboard, BANK_LIGHT, SIDE, MAIN_CUSTOM
-from layout import KEYS, N_ROWS, WIDTH
+from visualizer import DATA_DIR, ui_server
+from visualizer.audio_source import open_capture
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE, MAIN_CUSTOM
+from visualizer.layout import KEYS, N_ROWS, WIDTH
 
 RATE, HOP, FFT = 48000, 1024, 4096      # ~21 ms per update, 11.7 Hz bins
 N_BANDS = 16
 F_LO, F_HI = 40, 16000
 BASS = (40, 150)
-HERE = os.path.dirname(os.path.abspath(__file__))
-STATE_FILE = os.path.join(HERE, 'saved_lighting.json')
-CRASH_LOG = os.path.join(HERE, 'crash_log.txt')
+STATE_FILE = os.path.join(DATA_DIR, 'saved_lighting.json')
+CRASH_LOG = os.path.join(DATA_DIR, 'crash_log.txt')
 AGC_TARGET_DB = -20.0       # level the input is normalised to (volume independence)
 AGC_SECONDS = 30.0          # slow enough that a chorus still stands out against the verse
 FILL_STEPS = 4              # partial top key brightness levels (fewer = fewer packets)
@@ -261,7 +260,7 @@ def main():
                 ctx['kb'].close()
             except Exception:
                 pass
-            print(f'\nkeyboard disconnected ({reason}) — last packets saved to crash_log.txt; reconnecting...',
+            print(f'\nkeyboard disconnected ({reason}) — last packets saved to data/crash_log.txt; reconnecting...',
                   flush=True)
             while not stop.is_set():
                 time.sleep(0.5)

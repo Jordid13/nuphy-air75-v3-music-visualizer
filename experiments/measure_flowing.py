@@ -1,8 +1,12 @@
 """How different do flowing speeds 1-3 actually look? Records the live side frame at each speed and
 estimates the pattern's cycle time (dominant frequency at each LED, averaged). Speeds 1-3 only."""
 import time
+import os
+import sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
 import numpy as np
-from nuphy import Keyboard, BANK_LIGHT, SIDE
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE
 
 
 def side(kb):

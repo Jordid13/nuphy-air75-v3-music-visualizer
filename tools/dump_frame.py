@@ -1,7 +1,10 @@
 """Read-only: dump the live per-LED color frame via GetKeyLightColor (0xD2), as NuPhy IO polls it."""
 import sys
 import time
-from nuphy import Keyboard
+import os
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard
 
 CMD_KEY_LIGHT = 0xD2
 TOTAL = 312          # 104 LEDs x RGB (84 key + 20 side)

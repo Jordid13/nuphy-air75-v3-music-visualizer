@@ -3,9 +3,10 @@ versus written alone? Measures the flowing cycle from the live frame after each 
 import time
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
 import numpy as np
-from nuphy import Keyboard, BANK_LIGHT, SIDE
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE
 
 
 def side_red(kb):

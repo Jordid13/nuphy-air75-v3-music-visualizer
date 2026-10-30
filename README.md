@@ -12,7 +12,7 @@ python spectrum.py --stats    # plus link/audio timing every 2 s
 **Settings page** (`http://localhost:8765`, local only): every tunable — bar height/feel, kick flash
 (colour, length, when it may flash, sensitivity), side-strip mode/colour/brightness/speed per section —
 applies live. **Stop** gives the keyboard back (your lighting restored, NuPhy IO usable) and **Start**
-takes it again; the page stays up until **Quit** or Ctrl+C. Settings live in named **profiles** (`profiles/*.json`, e.g. `Main`): Save updates the
+takes it again; the page stays up until **Quit** or Ctrl+C. Settings live in named **profiles** (`data/profiles/*.json`, e.g. `Main`): Save updates the
 current one, Save as… makes a new one, and the last-used profile loads on the next start. Strip settings write the
 keyboard's flash memory, so they apply when a slider is released; strip speed is limited to 0–3.
 
@@ -45,15 +45,15 @@ so you route it through the free virtual device BlackHole once:
 
 ## Files
 
-| File | What |
+| Path | What |
 |---|---|
-| `spectrum.py` | the visualizer |
-| `ui_server.py`, `ui.html` | the live settings page (schema + limits in `ui_server.py`) |
-| `record_audio.py` | record what the visualizer hears to a WAV, for offline tuning |
-| `nuphy.py` | protocol driver (session key, read/write, per-LED colours) with safety guards |
-| `layout.py` | key LED index → row / x position (verified on the keyboard) |
-| `dump_frame.py` | read the live per-LED colour frame (read-only) |
-| everything else | experiments from reverse-engineering; see warnings below |
+| `spectrum.py` | the visualizer — run this |
+| `visualizer/` | its modules: `nuphy.py` protocol driver (session key, read/write, per-LED colours, safety guards), `layout.py` key LED positions (verified on the keyboard), `audio_source.py` system-audio capture, `ui_server.py` + `ui.html` settings page (schema + limits in `ui_server.py`) |
+| `tools/` | `record_audio.py` records what the visualizer hears to a WAV (for offline tuning); `dump_frame.py` reads the live per-LED colour frame (read-only) |
+| `experiments/`, `tests/` | scripts from reverse-engineering the keyboard; see the warnings below before running any |
+| `data/` | per-machine files, not in git: profiles, your saved lighting, crash log, recordings |
+
+Run the scripts from anywhere, e.g. `python tools/record_audio.py 60`.
 
 ## Protocol summary
 
@@ -75,11 +75,11 @@ Payload `[len][addr lo][addr hi][bank][data…]`.
 - Per-LED index ≥ 104 → keyboard reboots.
 - Toggling Num Lock → keyboard reboots.
 - Writing packets without waiting for acks → scrambled settings.
-- Streaming D6 writes (e.g. `beat_side.py`, `--side flash`) → flash-memory wear (**permanent**) and key stalls.
+- Streaming D6 writes (e.g. `experiments/beat_side.py`, `--side flash`) → flash-memory wear (**permanent**) and key stalls.
 - Never send `0xF1` RestoreFactory or `0xEF` SetIapMode (bootloader).
 
-Experiment scripts that deliberately do some of the above: `exp_side5.py`, `test_numlock.py`,
-`test_speed0.py`, `measure_breathe.py`, `beat_side.py`.
+Experiment scripts that deliberately do some of the above: `experiments/exp_side5.py`, `tests/test_numlock.py`,
+`tests/test_speed0.py`, `experiments/measure_breathe.py`, `experiments/beat_side.py`.
 
 Known issue: the keyboard occasionally drops off USB for unknown reasons; `spectrum.py` reconnects by
-itself and logs the last packets to `crash_log.txt`.
+itself and logs the last packets to `data/crash_log.txt`.

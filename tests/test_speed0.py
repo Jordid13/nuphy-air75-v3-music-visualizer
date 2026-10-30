@@ -3,10 +3,11 @@ disconnect/reboot, does 0 stick, how fast does it look, and is the speed still c
 import time
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
 import numpy as np
 import hid
-from nuphy import Keyboard, BANK_LIGHT, SIDE, VID, PID, IFACE
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE, VID, PID, IFACE
 
 
 def side_red(kb):

@@ -7,8 +7,8 @@ import urllib.request
 
 import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
-from nuphy import Keyboard, BANK_LIGHT, SIDE
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE
 
 URL = 'http://localhost:8765'
 

@@ -2,8 +2,9 @@
 import time
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # project root
-from nuphy import Keyboard, BANK_LIGHT, SIDE, MAIN_CUSTOM, CMD_SIGNAL
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE, MAIN_CUSTOM, CMD_SIGNAL
 
 kb = Keyboard()
 saved = kb.read(BANK_LIGHT, 0, 17)

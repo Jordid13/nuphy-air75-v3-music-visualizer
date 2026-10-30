@@ -1,5 +1,9 @@
 """Read-only check: dump raw replies to the handshake and the lighting read."""
-from nuphy import Keyboard, frame
+import os
+import sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
+from visualizer.nuphy import Keyboard, frame
 
 kb = Keyboard()
 try:

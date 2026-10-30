@@ -1,8 +1,12 @@
 """Measure the side 'breathe' period at each speed setting via the frame buffer (one settings write
 per speed). Used to pick a breathe speed that matches a song's tempo."""
 import time
+import os
+import sys
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)  # project root
 import numpy as np
-from nuphy import Keyboard, BANK_LIGHT, SIDE
+from visualizer.nuphy import Keyboard, BANK_LIGHT, SIDE
 
 
 def side_red(kb):
